@@ -1,0 +1,30 @@
+{
+  "name": "scaning_nodejs",
+  "version": "1.0.0",
+  "description": "Cross-platform document scanning service for Print Scanning",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "scanning",
+    "sane",
+    "naps2",
+    "pdf",
+    "express"
+  ],
+  "author": "hrdeepchahal",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "marked": "^17.0.5",
+    "morgan": "^1.10.0",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
