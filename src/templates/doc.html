@@ -337,6 +337,16 @@
       </div>
     </div>
 
+    <!-- Quick SANE_DEVICE helper -->
+    <div class="status-card" style="margin-bottom:24px;">
+      <div class="label">How to get SANE_DEVICE</div>
+      <div class="value" style="font-family:inherit;font-size:13px;line-height:1.6;">
+        <strong>Linux:</strong> run <code>scanimage -L</code>, copy text inside backticks, set <code>SANE_DEVICE=...</code> in <code>.env</code>.<br />
+        <strong>macOS:</strong> default is <code>imagesnap</code> (use <code>imagesnap -l</code>); use <code>SANE_DEVICE</code> only if you installed SANE and use <code>scanimage -L</code>.<br />
+        <strong>Windows:</strong> <code>SANE_DEVICE</code> not used; use NAPS2 (<code>NAPS2_PATH</code> / profile).
+      </div>
+    </div>
+
     <!-- README rendered as HTML -->
     {{contentHtml}}
 

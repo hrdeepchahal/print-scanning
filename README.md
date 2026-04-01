@@ -218,6 +218,61 @@ NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
 | `SANE_SKIP_RESOLUTION` | No | Set `true` only if you get "unrecognized option --resolution" |
 | `NAPS2_PATH` | No | Windows only — custom NAPS2 install path |
 
+### How to get `SANE_DEVICE` (Linux / macOS / Windows)
+
+`SANE_DEVICE` is only used on systems that run SANE (mainly Linux, and macOS if SANE is installed).  
+On Windows, this variable is not used because scanning goes through NAPS2.
+
+#### Linux (recommended flow)
+
+```bash
+# 1) List detected devices
+scanimage -L
+
+# 2) Example output:
+# device `pixma:04A92759_01E3B00006EC' is a CANON Canon i-SENSYS MF3010
+
+# 3) Use the value between backticks in .env
+# SANE_DEVICE=pixma:04A92759_01E3B00006EC
+```
+
+#### macOS
+
+By default this project uses `imagesnap` on macOS, so `SANE_DEVICE` is usually not required.
+
+- If you stay with `imagesnap`, list devices using:
+
+```bash
+imagesnap -l
+```
+
+- If you install SANE on macOS and want to use SANE-style devices, then:
+
+```bash
+scanimage -L
+```
+
+and set:
+
+```env
+SANE_DEVICE=<value_from_scanimage_-L>
+```
+
+#### Windows
+
+`SANE_DEVICE` is **not applicable** on Windows.
+
+Use NAPS2 instead:
+
+1. Install NAPS2.
+2. Set optional path:
+
+```env
+NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
+```
+
+3. If you need a specific scanner, create a NAPS2 profile and use `--profile` in command logic.
+
 ---
 
 ## API Reference
