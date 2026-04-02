@@ -182,9 +182,10 @@ async function executeScan({ rollNumber, examCode, resolution = 300 }) {
     command = buildLinuxScanCommand(detectedDevice, filePath, resolution);
 
   } else if (platform === "darwin") {
-    const quoted = (p) => `"${p}"`;
-    const tmpPng = quoted(path.join("/tmp", `scan_${Date.now()}.png`));
-    command = `imagesnap ${tmpPng} && ${imgToPdfCmd(tmpPng, quoted(filePath))} && rm -f ${tmpPng}`;
+    // macOS uses SANE (scanimage) — same as Linux — for real scanners like Canon MF3010.
+    // Install: brew install sane-backends imagemagick
+    detectedDevice = await detectLinuxDevice();
+    command = buildLinuxScanCommand(detectedDevice, filePath, resolution);
 
   } else {
     throw new Error(`Unsupported platform: ${platform}`);
@@ -243,8 +244,8 @@ async function executeScan({ rollNumber, examCode, resolution = 300 }) {
       }
       if (platform === "darwin") {
         throw new Error(
-          "imagesnap or ImageMagick not found. " +
-          "Install: brew install imagesnap imagemagick"
+          "scanimage or ImageMagick not found on macOS. " +
+          "Install: brew install sane-backends imagemagick"
         );
       }
     }
