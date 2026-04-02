@@ -316,7 +316,7 @@ GET http://localhost:4545/api/scan?rollNumber=ROLL123&examCode=MATH2026
 {
   "success": true,
   "filename": "ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
-  "filePath": "/path/to/scaning_nodejs/scans/ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
+  "filePath": "/path/to/scaning_nodejs/scans/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
   "platform": "linux",
   "device": "pixma:04A92759_01E3B00006EC",
   "scansDirectory": "/path/to/scaning_nodejs/scans",
@@ -337,9 +337,128 @@ GET http://localhost:4545/api/scan?rollNumber=ROLL123&examCode=MATH2026
 
 ---
 
+### List all exam folders
+
+Returns every exam code that has at least one scanned document.
+
+```
+GET http://localhost:4545/api/docs
+```
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "exams": [
+    { "examCode": "MATH2026", "fileCount": 3 },
+    { "examCode": "EXAM2027", "fileCount": 1 }
+  ]
+}
+```
+
+---
+
+### List documents for an exam
+
+Returns all scanned PDFs inside `scans/<examCode>/` with a ready-to-use preview URL for each file.
+
+```
+GET http://localhost:4545/api/docs/:examCode
+```
+
+**Example:**
+
+```
+GET http://localhost:4545/api/docs/MATH2026
+```
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "examCode": "MATH2026",
+  "documentCount": 2,
+  "documents": [
+    {
+      "filename": "ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
+      "size": 1843200,
+      "createdAt": "2026-04-01T07:38:47.000Z",
+      "previewUrl": "http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf"
+    },
+    {
+      "filename": "ROLL456_MATH2026_2026-04-01T07-45-10.pdf",
+      "size": 1920000,
+      "createdAt": "2026-04-01T07:45:11.000Z",
+      "previewUrl": "http://localhost:4545/api/docs/MATH2026/ROLL456_MATH2026_2026-04-01T07-45-10.pdf"
+    }
+  ]
+}
+```
+
+**Response 404** — no scans exist yet for this exam:
+
+```json
+{
+  "success": false,
+  "message": "No scan folder found for exam: MATH2026. No documents have been scanned for this exam yet."
+}
+```
+
+---
+
+### Preview / download a document
+
+Streams the PDF bytes directly to the browser. Open in a `<a target="_blank">` link or embed in an `<iframe>` — the browser renders it natively using its built-in PDF viewer.
+
+No authentication required. Intended for local network use only.
+
+```
+GET http://localhost:4545/api/docs/:examCode/:filename
+```
+
+**Example:**
+
+```
+GET http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf
+```
+
+**Response:** PDF bytes with `Content-Type: application/pdf`
+
+**Response 404** — file not found:
+
+```json
+{
+  "success": false,
+  "message": "Document not found: ROLL123_MATH2026_... in exam MATH2026"
+}
+```
+
+> **Security note:** Both the exam code and filename are sanitised on the server to prevent directory traversal. Only `.pdf` files are served.
+
+---
+
+### Document folder structure on disk
+
+When a scan is triggered, the service automatically creates a subfolder named after the exam code:
+
+```
+scans/
+  MATH2026/
+    ROLL123_MATH2026_2026-04-01T07-38-46.pdf
+    ROLL456_MATH2026_2026-04-01T07-45-10.pdf
+  EXAM2027/
+    ROLL789_EXAM2027_2026-04-02T08-10-00.pdf
+```
+
+Each exam's documents are isolated so future exams never mix with previous ones.
+
+---
+
 ## Output Files
 
-**Saved to:** `scans/` folder inside this project (or `SCANS_DIR` if set)
+**Saved to:** `scans/<examCode>/` subfolder inside this project (or inside `SCANS_DIR` if set)
 
 **Filename format:**
 

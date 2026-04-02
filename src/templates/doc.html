@@ -1,416 +1,866 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Print Scanning — Scanning Service Docs</title>
-  <style>
-    /* ── Reset & base ─────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Print Scanning — Scanning Service Docs</title>
+    <style>
+      /* ── Reset & base ─────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-    :root {
-      --bg:         #0f1117;
-      --surface:    #1a1d27;
-      --surface2:   #22263a;
-      --border:     #2e3350;
-      --accent:     #4f8ef7;
-      --accent2:    #7c5ff7;
-      --green:      #2dd98f;
-      --red:        #f75f5f;
-      --yellow:     #f7c948;
-      --text:       #e2e8f0;
-      --muted:      #8892aa;
-      --code-bg:    #141720;
-      --sidebar-w:  270px;
-      --header-h:   58px;
-      --radius:     8px;
-      --font-mono:  "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
-    }
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface2: #22263a;
+        --border: #2e3350;
+        --accent: #4f8ef7;
+        --accent2: #7c5ff7;
+        --green: #2dd98f;
+        --red: #f75f5f;
+        --yellow: #f7c948;
+        --text: #e2e8f0;
+        --muted: #8892aa;
+        --code-bg: #141720;
+        --sidebar-w: 270px;
+        --header-h: 58px;
+        --radius: 8px;
+        --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+      }
 
-    html { scroll-behavior: smooth; }
+      html {
+        scroll-behavior: smooth;
+      }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      font-size: 15px;
-      line-height: 1.7;
-    }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 15px;
+        line-height: 1.7;
+      }
 
-    /* ── Top header bar ───────────────────────────────────── */
-    header {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      height: var(--header-h);
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; gap: 14px;
-      padding: 0 24px;
-    }
+      /* ── Top header bar ───────────────────────────────────── */
+      header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        height: var(--header-h);
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 24px;
+      }
 
-    .logo {
-      display: flex; align-items: center; gap: 10px;
-      font-weight: 700; font-size: 15px; letter-spacing: .3px;
-      text-decoration: none; color: var(--text);
-    }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.3px;
+        text-decoration: none;
+        color: var(--text);
+      }
 
-    .logo-icon {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-    }
+      .logo-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+      }
 
-    .badge {
-      font-size: 11px; font-weight: 600; letter-spacing: .5px;
-      padding: 3px 8px; border-radius: 20px;
-      background: color-mix(in srgb, var(--green) 15%, transparent);
-      color: var(--green);
-      border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
-    }
+      .badge {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        padding: 3px 8px;
+        border-radius: 20px;
+        background: color-mix(in srgb, var(--green) 15%, transparent);
+        color: var(--green);
+        border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+      }
 
-    .port-badge {
-      margin-left: auto;
-      font-size: 12px; font-weight: 600; font-family: var(--font-mono);
-      padding: 4px 10px; border-radius: 6px;
-      background: var(--code-bg); border: 1px solid var(--border);
-      color: var(--accent);
-    }
+      .port-badge {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        color: var(--accent);
+      }
 
-    .header-links { display: flex; gap: 6px; }
-    .header-links a {
-      font-size: 12px; color: var(--muted); text-decoration: none;
-      padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
-      transition: all .15s;
-    }
-    .header-links a:hover { color: var(--text); border-color: var(--accent); }
+      .header-links {
+        display: flex;
+        gap: 6px;
+      }
+      .header-links a {
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: none;
+        padding: 4px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        transition: all 0.15s;
+      }
+      .header-links a:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
 
-    /* ── Layout ───────────────────────────────────────────── */
-    .layout {
-      display: flex;
-      padding-top: var(--header-h);
-      min-height: 100vh;
-    }
+      /* ── Layout ───────────────────────────────────────────── */
+      .layout {
+        display: flex;
+        padding-top: var(--header-h);
+        min-height: 100vh;
+      }
 
-    /* ── Sidebar ──────────────────────────────────────────── */
-    nav {
-      position: fixed;
-      top: var(--header-h); bottom: 0; left: 0;
-      width: var(--sidebar-w);
-      overflow-y: auto;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      padding: 20px 0 40px;
-    }
+      /* ── Sidebar ──────────────────────────────────────────── */
+      nav {
+        position: fixed;
+        top: var(--header-h);
+        bottom: 0;
+        left: 0;
+        width: var(--sidebar-w);
+        overflow-y: auto;
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        padding: 20px 0 40px;
+      }
 
-    nav::-webkit-scrollbar { width: 4px; }
-    nav::-webkit-scrollbar-track { background: transparent; }
-    nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+      nav::-webkit-scrollbar {
+        width: 4px;
+      }
+      nav::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      nav::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
 
-    .nav-label {
-      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
-      text-transform: uppercase; color: var(--muted);
-      padding: 0 20px 8px;
-    }
+      .nav-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0 20px 8px;
+      }
 
-    nav ul { list-style: none; }
+      nav ul {
+        list-style: none;
+      }
 
-    nav ul li a {
-      display: block;
-      padding: 6px 20px;
-      font-size: 13px; color: var(--muted);
-      text-decoration: none;
-      border-left: 2px solid transparent;
-      transition: all .15s;
-    }
+      nav ul li a {
+        display: block;
+        padding: 6px 20px;
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        border-left: 2px solid transparent;
+        transition: all 0.15s;
+      }
 
-    nav ul li a:hover { color: var(--text); background: var(--surface2); }
-    nav ul li a.active { color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-    nav ul li.sub a { padding-left: 34px; font-size: 12px; }
+      nav ul li a:hover {
+        color: var(--text);
+        background: var(--surface2);
+      }
+      nav ul li a.active {
+        color: var(--accent);
+        border-left-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+      }
+      nav ul li.sub a {
+        padding-left: 34px;
+        font-size: 12px;
+      }
 
-    /* ── Main content ─────────────────────────────────────── */
-    main {
-      margin-left: var(--sidebar-w);
-      flex: 1;
-      max-width: 860px;
-      padding: 40px 52px 80px;
-    }
+      /* ── Main content ─────────────────────────────────────── */
+      main {
+        margin-left: var(--sidebar-w);
+        flex: 1;
+        max-width: 860px;
+        padding: 40px 52px 80px;
+      }
 
-    /* ── Markdown content styles ──────────────────────────── */
-    main h1 {
-      font-size: 28px; font-weight: 800;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
+      /* ── Markdown content styles ──────────────────────────── */
+      main h1 {
+        font-size: 28px;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 8px;
+      }
 
-    main h2 {
-      font-size: 20px; font-weight: 700; color: var(--text);
-      margin: 44px 0 14px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
+      main h2 {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        margin: 44px 0 14px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
 
-    main h3 {
-      font-size: 16px; font-weight: 600; color: var(--accent);
-      margin: 28px 0 10px;
-    }
+      main h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--accent);
+        margin: 28px 0 10px;
+      }
 
-    main h4 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; color: var(--text); }
+      main h4 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 20px 0 8px;
+        color: var(--text);
+      }
 
-    main p { margin-bottom: 14px; color: var(--text); }
+      main p {
+        margin-bottom: 14px;
+        color: var(--text);
+      }
 
-    main > p:first-child { font-size: 16px; color: var(--muted); margin-bottom: 24px; }
+      main > p:first-child {
+        font-size: 16px;
+        color: var(--muted);
+        margin-bottom: 24px;
+      }
 
-    main a { color: var(--accent); text-decoration: none; }
-    main a:hover { text-decoration: underline; }
+      main a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      main a:hover {
+        text-decoration: underline;
+      }
 
-    main ul, main ol {
-      margin: 0 0 14px 20px;
-    }
-    main li { margin-bottom: 4px; }
-    main li > code { font-size: 12px; }
+      main ul,
+      main ol {
+        margin: 0 0 14px 20px;
+      }
+      main li {
+        margin-bottom: 4px;
+      }
+      main li > code {
+        font-size: 12px;
+      }
 
-    /* Code blocks */
-    main pre {
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px 18px;
-      overflow-x: auto;
-      margin: 14px 0 20px;
-      position: relative;
-    }
+      /* Code blocks */
+      main pre {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+        overflow-x: auto;
+        margin: 14px 0 20px;
+        position: relative;
+      }
 
-    main pre code {
-      font-family: var(--font-mono);
-      font-size: 13px;
-      line-height: 1.6;
-      color: #c9d5f0;
-      background: none;
-      padding: 0;
-      border-radius: 0;
-    }
+      main pre code {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        line-height: 1.6;
+        color: #c9d5f0;
+        background: none;
+        padding: 0;
+        border-radius: 0;
+      }
 
-    /* Inline code */
-    main code {
-      font-family: var(--font-mono);
-      font-size: 12.5px;
-      background: var(--surface2);
-      color: #b5c8ff;
-      padding: 2px 6px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-    }
+      /* Inline code */
+      main code {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        background: var(--surface2);
+        color: #b5c8ff;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+      }
 
-    /* Tables */
-    main table {
-      width: 100%; border-collapse: collapse;
-      margin: 16px 0 24px; font-size: 13.5px;
-    }
+      /* Tables */
+      main table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px;
+        font-size: 13.5px;
+      }
 
-    main th {
-      background: var(--surface2);
-      color: var(--muted);
-      font-size: 11px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .6px;
-      padding: 10px 14px; text-align: left;
-      border: 1px solid var(--border);
-    }
+      main th {
+        background: var(--surface2);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        padding: 10px 14px;
+        text-align: left;
+        border: 1px solid var(--border);
+      }
 
-    main td {
-      padding: 9px 14px;
-      border: 1px solid var(--border);
-      vertical-align: top;
-    }
+      main td {
+        padding: 9px 14px;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
 
-    main tr:nth-child(even) td { background: color-mix(in srgb, var(--surface2) 40%, transparent); }
+      main tr:nth-child(even) td {
+        background: color-mix(in srgb, var(--surface2) 40%, transparent);
+      }
 
-    /* Blockquotes (> tip / note) */
-    main blockquote {
-      border-left: 3px solid var(--yellow);
-      background: color-mix(in srgb, var(--yellow) 6%, transparent);
-      padding: 12px 16px;
-      border-radius: 0 var(--radius) var(--radius) 0;
-      margin: 16px 0;
-      color: #d4c07a;
-      font-size: 13.5px;
-    }
+      /* Blockquotes (> tip / note) */
+      main blockquote {
+        border-left: 3px solid var(--yellow);
+        background: color-mix(in srgb, var(--yellow) 6%, transparent);
+        padding: 12px 16px;
+        border-radius: 0 var(--radius) var(--radius) 0;
+        margin: 16px 0;
+        color: #d4c07a;
+        font-size: 13.5px;
+      }
 
-    main blockquote p { margin: 0; color: inherit; }
+      main blockquote p {
+        margin: 0;
+        color: inherit;
+      }
 
-    main hr {
-      border: none; border-top: 1px solid var(--border);
-      margin: 36px 0;
-    }
+      main hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 36px 0;
+      }
 
-    /* ── Status cards at top ──────────────────────────────── */
-    .status-bar {
-      display: flex; gap: 12px; flex-wrap: wrap;
-      margin-bottom: 32px;
-    }
+      /* ── Status cards at top ──────────────────────────────── */
+      .status-bar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 32px;
+      }
 
-    .status-card {
-      flex: 1; min-width: 160px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 18px;
-    }
+      .status-card {
+        flex: 1;
+        min-width: 160px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 18px;
+      }
 
-    .status-card .label {
-      font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .8px; color: var(--muted); margin-bottom: 6px;
-    }
+      .status-card .label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
 
-    .status-card .value {
-      font-family: var(--font-mono); font-size: 14px; font-weight: 700;
-      color: var(--text);
-    }
+      .status-card .value {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+      }
 
-    .status-card .dot {
-      display: inline-block; width: 8px; height: 8px;
-      border-radius: 50%; margin-right: 6px;
-      animation: pulse 2s infinite;
-    }
-    .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+      .status-card .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+        animation: pulse 2s infinite;
+      }
+      .dot-green {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+      }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: .4; }
-    }
-
-    /* ── Responsive ───────────────────────────────────────── */
-    @media (max-width: 768px) {
-      nav { display: none; }
-      main { margin-left: 0; padding: 24px 20px 60px; }
-    }
-  </style>
-</head>
-<body>
-
-<!-- ── Header ── -->
-<header>
-  <a class="logo" href="/doc">
-    <span class="logo-icon">📠</span>
-    Print Scanning
-  </a>
-  <span>Scanning Service</span>
-  <span class="badge">● LIVE</span>
-  <div class="header-links" style="margin-left:auto">
-    <a href="/api/health" target="_blank">Health</a>
-    <a href="/api/scan?rollNumber=TEST&examCode=DEMO" target="_blank">Test Scan</a>
-  </div>
-  <span class="port-badge">:4545</span>
-</header>
-
-<!-- ── Layout ── -->
-<div class="layout">
-
-  <!-- ── Sidebar nav ── -->
-  <nav id="sidebar">
-    <div class="nav-label">Contents</div>
-    <ul id="nav-list">
-      {{sidebarHtml}}
-    </ul>
-  </nav>
-
-  <!-- ── Main doc content ── -->
-  <main id="content">
-
-    <!-- Status bar -->
-    <div class="status-bar">
-      <div class="status-card">
-        <div class="label">Service</div>
-        <div class="value"><span class="dot dot-green"></span>Running</div>
-      </div>
-      <div class="status-card">
-        <div class="label">Port</div>
-        <div class="value">4545</div>
-      </div>
-      <div class="status-card">
-        <div class="label">Platform</div>
-        <div class="value" id="platform-val">...</div>
-      </div>
-      <div class="status-card">
-        <div class="label">Scan Endpoint</div>
-        <div class="value">/api/scan</div>
-      </div>
-    </div>
-
-    <!-- Quick SANE_DEVICE helper -->
-    <div class="status-card" style="margin-bottom:24px;">
-      <div class="label">How to get SANE_DEVICE</div>
-      <div class="value" style="font-family:inherit;font-size:13px;line-height:1.6;">
-        <strong>Linux:</strong> run <code>scanimage -L</code>, copy text inside backticks, set <code>SANE_DEVICE=...</code> in <code>.env</code>.<br />
-        <strong>macOS:</strong> default is <code>imagesnap</code> (use <code>imagesnap -l</code>); use <code>SANE_DEVICE</code> only if you installed SANE and use <code>scanimage -L</code>.<br />
-        <strong>Windows:</strong> <code>SANE_DEVICE</code> not used; use NAPS2 (<code>NAPS2_PATH</code> / profile).
-      </div>
-    </div>
-
-    <!-- README rendered as HTML -->
-    {{contentHtml}}
-
-  </main>
-</div>
-
-<script>
-  // ── Populate platform from /api/health ──────────────────
-  fetch("/api/health")
-    .then(r => r.json())
-    .then(d => {
-      document.getElementById("platform-val").textContent = d.platform || "—";
-    })
-    .catch(() => {
-      document.getElementById("platform-val").textContent = "—";
-    });
-
-  // ── Active sidebar link on scroll ───────────────────────
-  const headings = document.querySelectorAll("main h2[id], main h3[id]");
-  const navLinks = document.querySelectorAll("#nav-list a");
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          navLinks.forEach((a) => a.classList.remove("active"));
-          const active = document.querySelector('#nav-list a[href="#' + entry.target.id + '"]');
-          if (active) {
-            active.classList.add("active");
-            active.scrollIntoView({ block: "nearest" });
-          }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
         }
-      });
-    },
-    { rootMargin: "-20% 0px -70% 0px" }
-  );
+        50% {
+          opacity: 0.4;
+        }
+      }
 
-  headings.forEach((h) => observer.observe(h));
+      /* ── Responsive ───────────────────────────────────────── */
+      @media (max-width: 768px) {
+        nav {
+          display: none;
+        }
+        main {
+          margin-left: 0;
+          padding: 24px 20px 60px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Header ── -->
+    <header>
+      <a class="logo" href="/">
+        <span class="logo-icon">📠</span>
+        Print Scanning
+      </a>
+      <span>Scanning Service</span>
+      <span class="badge">● LIVE</span>
+      <div class="header-links" style="margin-left: auto">
+        <a href="/api/health" target="_blank">Health</a>
+        <a href="/api/scan?rollNumber=TEST&examCode=DEMO" target="_blank"
+          >Test Scan</a
+        >
+        <a href="/api/docs" target="_blank">Docs API</a>
+      </div>
+      <span class="port-badge">:4545</span>
+    </header>
 
-  // ── Copy button on code blocks ───────────────────────────
-  document.querySelectorAll("pre").forEach((pre) => {
-    const btn = document.createElement("button");
-    btn.textContent = "Copy";
-    btn.style.cssText = [
-      "position:absolute", "top:10px", "right:10px",
-      "font-size:11px", "font-weight:600",
-      "padding:3px 10px", "border-radius:5px",
-      "background:#22263a", "color:#8892aa",
-      "border:1px solid #2e3350", "cursor:pointer",
-      "transition:all .15s", "font-family:inherit",
-    ].join(";");
-    btn.onmouseenter = () => { btn.style.color = "#e2e8f0"; btn.style.borderColor = "#4f8ef7"; };
-    btn.onmouseleave = () => { btn.style.color = "#8892aa"; btn.style.borderColor = "#2e3350"; };
-    btn.onclick = () => {
-      navigator.clipboard.writeText(pre.querySelector("code")?.innerText || "").then(() => {
-        btn.textContent = "Copied!";
-        btn.style.color = "#2dd98f";
-        setTimeout(() => { btn.textContent = "Copy"; btn.style.color = "#8892aa"; }, 1500);
-      });
-    };
-    pre.style.position = "relative";
-    pre.appendChild(btn);
-  });
-</script>
+    <!-- ── Layout ── -->
+    <div class="layout">
+      <!-- ── Sidebar nav ── -->
+      <nav id="sidebar">
+        <div class="nav-label">Contents</div>
+        <ul id="nav-list">
+          {{sidebarHtml}}
+        </ul>
+      </nav>
 
-</body>
+      <!-- ── Main doc content ── -->
+      <main id="content">
+        <!-- Status bar -->
+        <div class="status-bar">
+          <div class="status-card">
+            <div class="label">Service</div>
+            <div class="value"><span class="dot dot-green"></span>Running</div>
+          </div>
+          <div class="status-card">
+            <div class="label">Port</div>
+            <div class="value">4545</div>
+          </div>
+          <div class="status-card">
+            <div class="label">Platform</div>
+            <div class="value" id="platform-val">...</div>
+          </div>
+          <div class="status-card">
+            <div class="label">Scan Endpoint</div>
+            <div class="value">/api/scan</div>
+          </div>
+        </div>
+
+        <!-- Quick SANE_DEVICE helper -->
+        <div class="status-card" style="margin-bottom: 24px">
+          <div class="label">How to get SANE_DEVICE</div>
+          <div
+            class="value"
+            style="font-family: inherit; font-size: 13px; line-height: 1.6"
+          >
+            <strong>Linux:</strong> run <code>scanimage -L</code>, copy text
+            inside backticks, set <code>SANE_DEVICE=...</code> in
+            <code>.env</code>.<br />
+            <strong>macOS:</strong> default is <code>imagesnap</code> (use
+            <code>imagesnap -l</code>); use <code>SANE_DEVICE</code> only if you
+            installed SANE and use <code>scanimage -L</code>.<br />
+            <strong>Windows:</strong> <code>SANE_DEVICE</code> not used; use
+            NAPS2 (<code>NAPS2_PATH</code> / profile).
+          </div>
+        </div>
+
+        <!-- ── Live Docs API Explorer ── -->
+        <div
+          id="docs-explorer"
+          style="
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            margin-bottom: 32px;
+          "
+        >
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              margin-bottom: 16px;
+            "
+          >
+            <span style="font-size: 18px">📂</span>
+            <strong style="font-size: 15px">Scanned Documents Explorer</strong>
+            <span
+              style="
+                font-size: 11px;
+                padding: 2px 8px;
+                border-radius: 20px;
+                background: color-mix(in srgb, var(--accent) 12%, transparent);
+                color: var(--accent);
+                border: 1px solid
+                  color-mix(in srgb, var(--accent) 25%, transparent);
+              "
+            >
+              Live
+            </span>
+          </div>
+
+          <!-- Exam selector row -->
+          <div
+            style="
+              display: flex;
+              gap: 10px;
+              flex-wrap: wrap;
+              align-items: center;
+              margin-bottom: 16px;
+            "
+          >
+            <select
+              id="exam-select"
+              style="
+                background: var(--code-bg);
+                color: var(--text);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 13px;
+                font-family: var(--font-mono);
+                min-width: 220px;
+                cursor: pointer;
+              "
+            >
+              <option value="">— select exam —</option>
+            </select>
+            <button
+              id="reload-exams-btn"
+              style="
+                background: var(--surface2);
+                color: var(--muted);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.15s;
+              "
+            >
+              ↺ Refresh
+            </button>
+            <span
+              id="exam-count"
+              style="font-size: 12px; color: var(--muted)"
+            ></span>
+          </div>
+
+          <!-- Document list table -->
+          <div id="docs-table-wrap" style="display: none">
+            <table
+              style="width: 100%; border-collapse: collapse; font-size: 13px"
+            >
+              <thead>
+                <tr>
+                  <th
+                    style="
+                      background: var(--surface2);
+                      color: var(--muted);
+                      padding: 8px 12px;
+                      text-align: left;
+                      border: 1px solid var(--border);
+                      font-size: 11px;
+                      text-transform: uppercase;
+                      letter-spacing: 0.6px;
+                    "
+                  >
+                    Filename
+                  </th>
+                  <th
+                    style="
+                      background: var(--surface2);
+                      color: var(--muted);
+                      padding: 8px 12px;
+                      text-align: left;
+                      border: 1px solid var(--border);
+                      font-size: 11px;
+                      text-transform: uppercase;
+                      letter-spacing: 0.6px;
+                      width: 90px;
+                    "
+                  >
+                    Size
+                  </th>
+                  <th
+                    style="
+                      background: var(--surface2);
+                      color: var(--muted);
+                      padding: 8px 12px;
+                      text-align: left;
+                      border: 1px solid var(--border);
+                      font-size: 11px;
+                      text-transform: uppercase;
+                      letter-spacing: 0.6px;
+                      width: 170px;
+                    "
+                  >
+                    Scanned at
+                  </th>
+                  <th
+                    style="
+                      background: var(--surface2);
+                      color: var(--muted);
+                      padding: 8px 12px;
+                      text-align: center;
+                      border: 1px solid var(--border);
+                      font-size: 11px;
+                      text-transform: uppercase;
+                      letter-spacing: 0.6px;
+                      width: 80px;
+                    "
+                  >
+                    Preview
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="docs-tbody"></tbody>
+            </table>
+            <p
+              id="no-docs-msg"
+              style="
+                display: none;
+                color: var(--muted);
+                font-size: 13px;
+                margin-top: 10px;
+              "
+            >
+              No scanned documents found for this exam yet.
+            </p>
+          </div>
+
+          <p
+            id="docs-status"
+            style="font-size: 12px; color: var(--muted); margin-top: 8px"
+          ></p>
+        </div>
+
+        <!-- README rendered as HTML -->
+        {{contentHtml}}
+      </main>
+    </div>
+
+    <script>
+      // ── Populate platform from /api/health ──────────────────
+      fetch("/api/health")
+        .then((r) => r.json())
+        .then((d) => {
+          document.getElementById("platform-val").textContent =
+            d.platform || "—"
+        })
+        .catch(() => {
+          document.getElementById("platform-val").textContent = "—"
+        })
+
+      // ── Active sidebar link on scroll ───────────────────────
+      const headings = document.querySelectorAll("main h2[id], main h3[id]")
+      const navLinks = document.querySelectorAll("#nav-list a")
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              navLinks.forEach((a) => a.classList.remove("active"))
+              const active = document.querySelector(
+                '#nav-list a[href="#' + entry.target.id + '"]',
+              )
+              if (active) {
+                active.classList.add("active")
+                active.scrollIntoView({ block: "nearest" })
+              }
+            }
+          })
+        },
+        { rootMargin: "-20% 0px -70% 0px" },
+      )
+
+      headings.forEach((h) => observer.observe(h))
+
+      // ── Docs API Explorer ───────────────────────────────────
+      const examSelect = document.getElementById("exam-select")
+      const reloadBtn = document.getElementById("reload-exams-btn")
+      const examCount = document.getElementById("exam-count")
+      const docsTableWrap = document.getElementById("docs-table-wrap")
+      const docsTbody = document.getElementById("docs-tbody")
+      const noDocsMsg = document.getElementById("no-docs-msg")
+      const docsStatus = document.getElementById("docs-status")
+
+      function fmtSize(bytes) {
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
+        if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB"
+        return bytes + " B"
+      }
+
+      function fmtDate(iso) {
+        try {
+          return new Date(iso).toLocaleString()
+        } catch {
+          return iso
+        }
+      }
+
+      async function loadExams() {
+        examSelect.innerHTML = '<option value="">Loading…</option>'
+        examCount.textContent = ""
+        docsTableWrap.style.display = "none"
+        try {
+          const r = await fetch("/api/docs")
+          const d = await r.json()
+          examSelect.innerHTML = '<option value="">— select exam —</option>'
+          if (!d.success || !d.exams.length) {
+            examCount.textContent = "No exam folders found yet."
+            return
+          }
+          d.exams.forEach(({ examCode, fileCount }) => {
+            const opt = document.createElement("option")
+            opt.value = examCode
+            opt.textContent = `${examCode}  (${fileCount} file${fileCount !== 1 ? "s" : ""})`
+            examSelect.appendChild(opt)
+          })
+          examCount.textContent = `${d.exams.length} exam${d.exams.length !== 1 ? "s" : ""}`
+        } catch {
+          examCount.textContent = "Service not reachable."
+        }
+      }
+
+      async function loadDocs(examCode) {
+        docsTableWrap.style.display = "none"
+        noDocsMsg.style.display = "none"
+        docsTbody.innerHTML = ""
+        docsStatus.textContent = "Loading…"
+
+        try {
+          const r = await fetch("/api/docs/" + encodeURIComponent(examCode))
+          const d = await r.json()
+          docsStatus.textContent = ""
+
+          if (!d.success) {
+            noDocsMsg.style.display = "block"
+            noDocsMsg.textContent = d.message
+            docsTableWrap.style.display = "block"
+            return
+          }
+
+          if (!d.documents.length) {
+            noDocsMsg.style.display = "block"
+            docsTableWrap.style.display = "block"
+            return
+          }
+
+          noDocsMsg.style.display = "none"
+          d.documents.forEach(({ filename, size, createdAt, previewUrl }) => {
+            const tr = document.createElement("tr")
+            tr.innerHTML = `
+          <td style="padding:8px 12px;border:1px solid var(--border);font-family:var(--font-mono);font-size:12px;color:#c9d5f0;word-break:break-all;">${filename}</td>
+          <td style="padding:8px 12px;border:1px solid var(--border);font-size:12px;color:var(--muted);">${fmtSize(size)}</td>
+          <td style="padding:8px 12px;border:1px solid var(--border);font-size:12px;color:var(--muted);">${fmtDate(createdAt)}</td>
+          <td style="padding:8px 12px;border:1px solid var(--border);text-align:center;">
+            <a href="${previewUrl}" target="_blank" rel="noreferrer" style="
+              font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;
+              background:color-mix(in srgb,var(--green) 12%,transparent);
+              color:var(--green);border:1px solid color-mix(in srgb,var(--green) 28%,transparent);
+              text-decoration:none;transition:all .15s;white-space:nowrap;">
+              Open PDF
+            </a>
+          </td>`
+            docsTbody.appendChild(tr)
+          })
+          docsTableWrap.style.display = "block"
+        } catch {
+          docsStatus.textContent = "Failed to load documents."
+        }
+      }
+
+      examSelect.addEventListener("change", () => {
+        if (examSelect.value) loadDocs(examSelect.value)
+        else {
+          docsTableWrap.style.display = "none"
+          docsStatus.textContent = ""
+        }
+      })
+
+      reloadBtn.addEventListener("click", () => {
+        loadExams()
+        docsTableWrap.style.display = "none"
+        docsStatus.textContent = ""
+      })
+
+      reloadBtn.onmouseenter = () => {
+        reloadBtn.style.color = "var(--text)"
+        reloadBtn.style.borderColor = "var(--accent)"
+      }
+      reloadBtn.onmouseleave = () => {
+        reloadBtn.style.color = "var(--muted)"
+        reloadBtn.style.borderColor = "var(--border)"
+      }
+
+      // Load exam list on page open
+      loadExams()
+
+      // ── Copy button on code blocks ───────────────────────────
+      document.querySelectorAll("pre").forEach((pre) => {
+        const btn = document.createElement("button")
+        btn.textContent = "Copy"
+        btn.style.cssText = [
+          "position:absolute",
+          "top:10px",
+          "right:10px",
+          "font-size:11px",
+          "font-weight:600",
+          "padding:3px 10px",
+          "border-radius:5px",
+          "background:#22263a",
+          "color:#8892aa",
+          "border:1px solid #2e3350",
+          "cursor:pointer",
+          "transition:all .15s",
+          "font-family:inherit",
+        ].join(";")
+        btn.onmouseenter = () => {
+          btn.style.color = "#e2e8f0"
+          btn.style.borderColor = "#4f8ef7"
+        }
+        btn.onmouseleave = () => {
+          btn.style.color = "#8892aa"
+          btn.style.borderColor = "#2e3350"
+        }
+        btn.onclick = () => {
+          navigator.clipboard
+            .writeText(pre.querySelector("code")?.innerText || "")
+            .then(() => {
+              btn.textContent = "Copied!"
+              btn.style.color = "#2dd98f"
+              setTimeout(() => {
+                btn.textContent = "Copy"
+                btn.style.color = "#8892aa"
+              }, 1500)
+            })
+        }
+        pre.style.position = "relative"
+        pre.appendChild(btn)
+      })
+    </script>
+  </body>
 </html>

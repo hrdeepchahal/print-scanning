@@ -5,7 +5,7 @@ const { marked } = require("marked");
 
 const router = express.Router();
 
-const README_PATH  = path.join(__dirname, "../../README.md");
+const README_PATH = path.join(__dirname, "../../README.md");
 const TEMPLATE_PATH = path.join(__dirname, "../templates/doc.html");
 
 // Custom renderer: adds anchor IDs to headings for sidebar nav
@@ -54,10 +54,41 @@ function buildSidebarHtml(items) {
 }
 
 /**
- * GET /doc
+ * GET /documentation
  * Renders README.md as a styled documentation page.
  */
-router.get("/doc", (req, res) => {
+router.get("/documentation", (req, res) => {
+  let markdown;
+  try {
+    markdown = fs.readFileSync(README_PATH, "utf-8");
+  } catch {
+    return res.status(500).send("<h1>README.md not found</h1>");
+  }
+
+  const contentHtml = marked.parse(markdown);
+  const navItems = buildNavItems(markdown);
+  const sidebarHtml = buildSidebarHtml(navItems);
+
+  let template;
+  try {
+    template = fs.readFileSync(TEMPLATE_PATH, "utf-8");
+  } catch {
+    return res.status(500).send("<h1>doc.html template not found</h1>");
+  }
+
+  const html = template
+    .replace("{{sidebarHtml}}", sidebarHtml)
+    .replace("{{contentHtml}}", contentHtml);
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+/**
+ * GET /
+ * Renders README.md as a styled documentation page.
+ */
+router.get("/", (req, res) => {
   let markdown;
   try {
     markdown = fs.readFileSync(README_PATH, "utf-8");

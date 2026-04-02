@@ -2,7 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const scanRoutes = require("./routes/scan.routes");
-const docRoutes = require("./routes/doc.routes");
+const docsRoutes = require("./routes/docs.routes");
+const documentationRoutes = require("./routes/documentation.routes");
 const logger = require("./utils/logger");
 
 const app = express();
@@ -26,7 +27,8 @@ app.use(
 );
 
 app.use("/api", scanRoutes);
-app.use("/", docRoutes);
+app.use("/api", docsRoutes);
+app.use("/", documentationRoutes);
 
 // Global error handler — no unhandled crashes
 app.use((err, req, res, next) => {
