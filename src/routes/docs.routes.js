@@ -1,6 +1,6 @@
 const express = require("express");
 const path = require("path");
-const { listExamFolders, listDocsForExam, sanitize, SCANS_DIR } = require("../utils/fileHandler");
+const { listExamFolders, listDocsForExam, deleteDocuments, sanitize, SCANS_DIR } = require("../utils/fileHandler");
 const logger = require("../utils/logger");
 
 const router = express.Router();
@@ -129,6 +129,57 @@ router.get("/docs/:examCode/:filename", (req, res) => {
     }
     logger.info(`Served: ${safeFilename}`);
   });
+});
+
+/**
+ * DELETE /api/docs/:examCode
+ *
+ * Delete one or more scanned PDF files that have been successfully uploaded
+ * to the backend pipeline. Called by the admin frontend after a confirmed upload.
+ *
+ * Body (JSON):
+ *   { filenames: ["roll1_EXAM_2026-04-02T12-00-00.pdf", ...] }
+ *
+ * Response 200:
+ *   { success: true, deleted: [...], notFound: [...], errors: [...] }
+ *
+ * Response 400: missing / invalid body
+ * Response 404: exam folder does not exist
+ */
+router.delete("/docs/:examCode", (req, res) => {
+  const { examCode } = req.params;
+  const { filenames } = req.body || {};
+
+  if (!examCode || !examCode.trim()) {
+    return res.status(400).json({ success: false, message: "examCode is required" });
+  }
+
+  if (!Array.isArray(filenames) || filenames.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Body must include a non-empty 'filenames' array",
+    });
+  }
+
+  try {
+    const result = deleteDocuments(examCode.trim(), filenames);
+
+    logger.info(
+      `Delete request for exam ${examCode}: ` +
+        `deleted=${result.deleted.length}, notFound=${result.notFound.length}, errors=${result.errors.length}`
+    );
+
+    return res.json({
+      success: true,
+      deleted: result.deleted,
+      notFound: result.notFound,
+      errors: result.errors,
+      message: `${result.deleted.length} file(s) deleted successfully`,
+    });
+  } catch (err) {
+    logger.error(`Failed to delete docs for exam ${examCode}: ${err.message}`);
+    return res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 module.exports = router;

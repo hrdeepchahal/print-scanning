@@ -113,12 +113,61 @@ function listDocsForExam(examCode) {
   });
 }
 
+/**
+ * Delete specific PDF files from an exam's scan folder.
+ *
+ * @param {string} examCode
+ * @param {string[]} filenames  - Array of filenames to delete (e.g. ["roll1_EXAM_2026.pdf"])
+ * @returns {{ deleted: string[], notFound: string[], errors: string[] }}
+ */
+function deleteDocuments(examCode, filenames) {
+  const safeExam = sanitize(examCode);
+  const examDir = path.join(SCANS_DIR, safeExam);
+
+  if (!fs.existsSync(examDir)) {
+    return { deleted: [], notFound: filenames, errors: [] };
+  }
+
+  const deleted = [];
+  const notFound = [];
+  const errors = [];
+
+  for (const filename of filenames) {
+    // Strip any path separators to prevent directory traversal
+    const safeFilename = path.basename(filename);
+
+    if (!safeFilename.endsWith(".pdf")) {
+      errors.push(`${safeFilename}: only PDF files can be deleted`);
+      continue;
+    }
+
+    const filePath = path.join(examDir, safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      notFound.push(safeFilename);
+      continue;
+    }
+
+    try {
+      fs.unlinkSync(filePath);
+      deleted.push(safeFilename);
+      logger.info(`Deleted scanned file: ${filePath}`);
+    } catch (err) {
+      logger.error(`Failed to delete ${filePath}: ${err.message}`);
+      errors.push(`${safeFilename}: ${err.message}`);
+    }
+  }
+
+  return { deleted, notFound, errors };
+}
+
 module.exports = {
   ensureScansDirectory,
   buildOutputPath,
   validateOutputFile,
   listExamFolders,
   listDocsForExam,
+  deleteDocuments,
   sanitize,
   SCANS_DIR,
 };

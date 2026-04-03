@@ -102,17 +102,26 @@ async function detectLinuxDevice() {
 }
 
 /**
- * Return a shell snippet that converts an image file to PDF, trying
- * `convert` (ImageMagick <=6) first and `magick` (ImageMagick >=7) as a
- * fallback. Both are tried so the service works on all distros regardless
- * of which ImageMagick version is installed.
+ * Return a shell snippet that converts an image file to PDF using JPEG
+ * compression, trying `convert` (ImageMagick <=6) first and `magick`
+ * (ImageMagick >=7) as a fallback.
+ *
+ * JPEG compression is applied inside the PDF so the embedded image is
+ * compressed lossy — this reduces file size from ~11-14 MB (default ZIP)
+ * down to ~0.5–2 MB without visible quality loss for exam documents.
+ *
+ * Quality is controlled by SCAN_QUALITY in .env (default 82, range 1-100).
+ * Higher = better quality / larger file.  80-85 is the sweet spot for
+ * handwritten exam answer sheets.
  *
  * @param {string} src  - quoted source image path
  * @param {string} dest - quoted destination PDF path
  * @returns {string}
  */
 function imgToPdfCmd(src, dest) {
-  return `(convert ${src} ${dest} 2>/dev/null || magick ${src} ${dest})`;
+  const quality = parseInt(process.env.SCAN_QUALITY) || 82;
+  const flags = `-compress jpeg -quality ${quality}`;
+  return `(convert ${flags} ${src} ${dest} 2>/dev/null || magick ${flags} ${src} ${dest})`;
 }
 
 /**
