@@ -1,25 +1,35 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { marked } = require("marked");
 
 const router = express.Router();
 
 const README_PATH = path.join(__dirname, "../../README.md");
 const TEMPLATE_PATH = path.join(__dirname, "../templates/doc.html");
 
-// Custom renderer: adds anchor IDs to headings for sidebar nav
-const renderer = new marked.Renderer();
-renderer.heading = function ({ text, depth }) {
-  const slug = text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .trim();
-  return `<h${depth} id="${slug}">${text}</h${depth}>\n`;
-};
-marked.setOptions({ renderer });
+let markedInstancePromise;
+
+async function getMarked() {
+  if (!markedInstancePromise) {
+    markedInstancePromise = import("marked").then(({ marked }) => {
+      // Custom renderer: adds anchor IDs to headings for sidebar nav
+      const renderer = new marked.Renderer();
+      renderer.heading = function ({ text, depth }) {
+        const slug = text
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, "")
+          .replace(/\s+/g, "-")
+          .replace(/-+/g, "-")
+          .trim();
+        return `<h${depth} id="${slug}">${text}</h${depth}>\n`;
+      };
+      marked.setOptions({ renderer });
+      return marked;
+    });
+  }
+
+  return markedInstancePromise;
+}
 
 /**
  * Build sidebar nav links from README headings.
@@ -57,7 +67,7 @@ function buildSidebarHtml(items) {
  * GET /documentation
  * Renders README.md as a styled documentation page.
  */
-router.get("/documentation", (req, res) => {
+router.get("/documentation", async (req, res) => {
   let markdown;
   try {
     markdown = fs.readFileSync(README_PATH, "utf-8");
@@ -65,6 +75,7 @@ router.get("/documentation", (req, res) => {
     return res.status(500).send("<h1>README.md not found</h1>");
   }
 
+  const marked = await getMarked();
   const contentHtml = marked.parse(markdown);
   const navItems = buildNavItems(markdown);
   const sidebarHtml = buildSidebarHtml(navItems);
@@ -88,7 +99,7 @@ router.get("/documentation", (req, res) => {
  * GET /
  * Renders README.md as a styled documentation page.
  */
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   let markdown;
   try {
     markdown = fs.readFileSync(README_PATH, "utf-8");
@@ -96,6 +107,7 @@ router.get("/", (req, res) => {
     return res.status(500).send("<h1>README.md not found</h1>");
   }
 
+  const marked = await getMarked();
   const contentHtml = marked.parse(markdown);
   const navItems = buildNavItems(markdown);
   const sidebarHtml = buildSidebarHtml(navItems);
