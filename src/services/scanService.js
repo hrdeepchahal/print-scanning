@@ -125,7 +125,25 @@ function imgToPdfCmd(src, dest) {
 }
 
 /**
- * Build the Linux-specific scanimage command.
+ * Build the scanimage flags shared by both single-page and multi-page flows.
+ *
+ * @param {string} device     - SANE device string
+ * @param {number} resolution - DPI
+ * @returns {{ deviceFlag: string, modeFlag: string, resolutionFlag: string }}
+ */
+function buildSaneFlags(device, resolution) {
+  const quoted = (p) => `"${p}"`;
+  const deviceFlag = device ? `--device-name=${quoted(device)}` : "";
+  const resolutionFlag =
+    process.env.SANE_SKIP_RESOLUTION === "true" ? "" : `--resolution=${resolution}`;
+  const scanMode = process.env.SANE_MODE || "Gray";
+  const modeFlag = `--mode=${scanMode}`;
+  return { deviceFlag, modeFlag, resolutionFlag };
+}
+
+/**
+ * Build a Linux/macOS scanimage command that outputs to a specific PNG path
+ * and then converts it to PDF (single-page legacy flow).
  *
  * @param {string} device     - SANE device string (e.g. "pixma:04A92759_01E3B00006EC")
  * @param {string} outputPath - Absolute path for the output PDF
@@ -135,20 +153,7 @@ function imgToPdfCmd(src, dest) {
 function buildLinuxScanCommand(device, outputPath, resolution) {
   const quoted = (p) => `"${p}"`;
   const tmpPng = quoted(path.join("/tmp", `scan_${Date.now()}.png`));
-
-  const deviceFlag = device ? `--device-name=${quoted(device)}` : "";
-
-  // --resolution is supported by the pixma backend (confirmed via scanimage --help).
-  // v4l (webcam) devices do NOT support it, which is why auto-detection above
-  // avoids them. If an unrecognized-option error still occurs for a custom backend,
-  // set SANE_SKIP_RESOLUTION=true in .env to omit the flag.
-  const resolutionFlag =
-    process.env.SANE_SKIP_RESOLUTION === "true" ? "" : `--resolution=${resolution}`;
-
-  // Scan mode: default Gray for document scanning (smaller file, faster).
-  // Override with SANE_MODE=Color in .env for colour documents.
-  const scanMode = process.env.SANE_MODE || "Gray";
-  const modeFlag = `--mode=${scanMode}`;
+  const { deviceFlag, modeFlag, resolutionFlag } = buildSaneFlags(device, resolution);
 
   const scanCmd = `scanimage ${deviceFlag} ${modeFlag} ${resolutionFlag} --format=png -o ${tmpPng}`
     .replace(/\s+/g, " ")
@@ -161,7 +166,145 @@ function buildLinuxScanCommand(device, outputPath, resolution) {
 }
 
 /**
- * Execute a document scan for the given student/exam context.
+ * Build a command that scans a single page to a temp PNG (no PDF conversion).
+ * Used by the multi-page session flow.
+ *
+ * @param {string} device     - SANE device string
+ * @param {string} pngPath    - Absolute output path for the PNG
+ * @param {number} resolution - DPI
+ * @returns {string} shell command
+ */
+function buildLinuxScanToPageCmd(device, pngPath, resolution) {
+  const quoted = (p) => `"${p}"`;
+  const { deviceFlag, modeFlag, resolutionFlag } = buildSaneFlags(device, resolution);
+
+  return `scanimage ${deviceFlag} ${modeFlag} ${resolutionFlag} --format=png -o ${quoted(pngPath)}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Scan a single page to a temporary PNG file.
+ * Detects device and builds the appropriate platform command.
+ *
+ * @param {string} pngOutputPath - Absolute path where the PNG should be saved
+ * @param {number} resolution    - DPI
+ * @returns {Promise<{ device: string }>}
+ */
+async function scanSinglePage(pngOutputPath, resolution = 300) {
+  const platform = process.platform;
+  let command;
+  let detectedDevice = "";
+
+  if (platform === "win32") {
+    const quoted = (p) => `"${p}"`;
+    const tmpPdf = pngOutputPath.replace(/\.png$/i, ".pdf");
+    command = `${quoted(NAPS2_PATH)} -o ${quoted(tmpPdf)} --noprofile`;
+  } else if (platform === "linux" || platform === "darwin") {
+    detectedDevice = await detectLinuxDevice();
+    command = buildLinuxScanToPageCmd(detectedDevice, pngOutputPath, resolution);
+  } else {
+    throw new Error(`Unsupported platform: ${platform}`);
+  }
+
+  logger.info(`scanSinglePage executing: ${command}`);
+
+  try {
+    const { stdout, stderr } = await execAsync(command);
+    if (stdout) logger.info(`Scanner stdout: ${stdout}`);
+    if (stderr) logger.warn(`Scanner stderr: ${stderr}`);
+  } catch (err) {
+    handleScanError(err, platform, detectedDevice);
+  }
+
+  return { device: detectedDevice };
+}
+
+/**
+ * Combine multiple PNG files into a single JPEG-compressed PDF.
+ *
+ * @param {string[]} pngPaths     - Ordered array of absolute PNG paths
+ * @param {string}   outputPdfPath - Absolute path for the merged PDF
+ * @returns {Promise<void>}
+ */
+async function combinePagesToPdf(pngPaths, outputPdfPath) {
+  const quoted = (p) => `"${p}"`;
+  const quality = parseInt(process.env.SCAN_QUALITY) || 82;
+  const flags = `-compress jpeg -quality ${quality}`;
+  const sources = pngPaths.map((p) => quoted(p)).join(" ");
+  const dest = quoted(outputPdfPath);
+
+  const cmd = `(convert ${flags} ${sources} ${dest} 2>/dev/null || magick ${flags} ${sources} ${dest})`;
+  logger.info(`Combining ${pngPaths.length} pages into PDF: ${outputPdfPath}`);
+
+  await execAsync(cmd);
+}
+
+/**
+ * Shared error handler for scan command failures.
+ * Translates low-level CLI errors into user-friendly messages.
+ *
+ * @param {Error}  err
+ * @param {string} platform
+ * @param {string} detectedDevice
+ */
+function handleScanError(err, platform, detectedDevice) {
+  logger.error(`Scan command failed: ${err.message}`);
+  const msg = err.message.toLowerCase();
+
+  if (msg.includes("no scanners were identified") || msg.includes("failed to open device")) {
+    throw new Error(
+      "Scanner not found. Ensure the Canon MF3010 is connected, powered on, and USB cable is secure."
+    );
+  }
+  if (msg.includes("sane_start") && msg.includes("invalid argument")) {
+    throw new Error(
+      "Scanner rejected the scan request (sane_start: Invalid argument). " +
+      "Most common causes: (1) no paper on the flatbed, (2) scanner is warming up — wait a moment and retry, " +
+      "(3) run 'scanimage --help' to check supported modes for your device."
+    );
+  }
+  if (msg.includes("unrecognized option") && msg.includes("resolution")) {
+    throw new Error(
+      "Scanner backend does not support --resolution. " +
+      "Set SANE_SKIP_RESOLUTION=true in .env to disable it."
+    );
+  }
+  if (msg.includes("unrecognized option") && msg.includes("mode")) {
+    throw new Error(
+      "Scanner backend does not support --mode. " +
+      "Check supported options with: scanimage --help -d " + (detectedDevice || "<device>")
+    );
+  }
+  if (
+    msg.includes("command not found") ||
+    msg.includes("no such file") ||
+    (msg.includes("not found") && !msg.includes("scanner"))
+  ) {
+    if (platform === "win32") {
+      throw new Error(
+        `NAPS2 not found at "${NAPS2_PATH}". ` +
+        "Install NAPS2 from https://www.naps2.com or set NAPS2_PATH env variable."
+      );
+    }
+    if (platform === "linux") {
+      throw new Error(
+        "scanimage or ImageMagick not found. " +
+        "Install: sudo apt install sane-utils imagemagick"
+      );
+    }
+    if (platform === "darwin") {
+      throw new Error(
+        "scanimage or ImageMagick not found on macOS. " +
+        "Install: brew install sane-backends imagemagick"
+      );
+    }
+  }
+  throw err;
+}
+
+/**
+ * Execute a document scan for the given student/exam context (single-page legacy flow).
  *
  * @param {object} options
  * @param {string} options.rollNumber  - Student roll number (used in filename)
@@ -186,13 +329,7 @@ async function executeScan({ rollNumber, examCode, resolution = 300 }) {
     const quoted = (p) => `"${p}"`;
     command = `${quoted(NAPS2_PATH)} -o ${quoted(filePath)} --noprofile`;
 
-  } else if (platform === "linux") {
-    detectedDevice = await detectLinuxDevice();
-    command = buildLinuxScanCommand(detectedDevice, filePath, resolution);
-
-  } else if (platform === "darwin") {
-    // macOS uses SANE (scanimage) — same as Linux — for real scanners like Canon MF3010.
-    // Install: brew install sane-backends imagemagick
+  } else if (platform === "linux" || platform === "darwin") {
     detectedDevice = await detectLinuxDevice();
     command = buildLinuxScanCommand(detectedDevice, filePath, resolution);
 
@@ -207,58 +344,7 @@ async function executeScan({ rollNumber, examCode, resolution = 300 }) {
     if (stdout) logger.info(`Scanner stdout: ${stdout}`);
     if (stderr) logger.warn(`Scanner stderr: ${stderr}`);
   } catch (err) {
-    logger.error(`Scan command failed: ${err.message}`);
-    const msg = err.message.toLowerCase();
-
-    if (msg.includes("no scanners were identified") || msg.includes("failed to open device")) {
-      throw new Error(
-        "Scanner not found. Ensure the Canon MF3010 is connected, powered on, and USB cable is secure."
-      );
-    }
-    if (msg.includes("sane_start") && msg.includes("invalid argument")) {
-      throw new Error(
-        "Scanner rejected the scan request (sane_start: Invalid argument). " +
-        "Most common causes: (1) no paper on the flatbed, (2) scanner is warming up — wait a moment and retry, " +
-        "(3) run 'scanimage --help' to check supported modes for your device."
-      );
-    }
-    if (msg.includes("unrecognized option") && msg.includes("resolution")) {
-      throw new Error(
-        "Scanner backend does not support --resolution. " +
-        "Set SANE_SKIP_RESOLUTION=true in .env to disable it."
-      );
-    }
-    if (msg.includes("unrecognized option") && msg.includes("mode")) {
-      throw new Error(
-        "Scanner backend does not support --mode. " +
-        "Check supported options with: scanimage --help -d " + (detectedDevice || "<device>")
-      );
-    }
-    if (
-      msg.includes("command not found") ||
-      msg.includes("no such file") ||
-      (msg.includes("not found") && !msg.includes("scanner"))
-    ) {
-      if (platform === "win32") {
-        throw new Error(
-          `NAPS2 not found at "${NAPS2_PATH}". ` +
-          "Install NAPS2 from https://www.naps2.com or set NAPS2_PATH env variable."
-        );
-      }
-      if (platform === "linux") {
-        throw new Error(
-          "scanimage or ImageMagick not found. " +
-          "Install: sudo apt install sane-utils imagemagick"
-        );
-      }
-      if (platform === "darwin") {
-        throw new Error(
-          "scanimage or ImageMagick not found on macOS. " +
-          "Install: brew install sane-backends imagemagick"
-        );
-      }
-    }
-    throw err;
+    handleScanError(err, platform, detectedDevice);
   }
 
   if (!validateOutputFile(filePath)) {
@@ -272,4 +358,9 @@ async function executeScan({ rollNumber, examCode, resolution = 300 }) {
   return { success: true, filename, filePath, platform, device: detectedDevice || undefined };
 }
 
-module.exports = { executeScan, detectLinuxDevice };
+module.exports = {
+  executeScan,
+  detectLinuxDevice,
+  scanSinglePage,
+  combinePagesToPdf,
+};

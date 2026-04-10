@@ -28,9 +28,10 @@ http://localhost:4545/api/health   ← Health check JSON
 ## Architecture
 
 ```
-React (StudentVerification.js)
+React (Admin Frontend / ScanOMRSheets.js)
     |
-    | GET http://localhost:4545/api/scan?rollNumber=ROLL123&examCode=MATH2026
+    | Single page:  GET /api/scan?rollNumber=ROLL123&examCode=MATH2026
+    | Multi-page:   POST /api/scan/start  →  POST /api/scan/page/:id (×N)  →  POST /api/scan/complete/:id
     v
 Express Server — scaning_nodejs (port 4545)
     |
@@ -42,10 +43,14 @@ OS Scanner Command
   Linux    →  scanimage --device-name="..." --mode=Gray --resolution=300 --format=png -o /tmp/scan.png
                && (convert scan.png output.pdf || magick scan.png output.pdf)
                && rm -f scan.png
-  macOS    →  imagesnap /tmp/scan.png && (convert scan.png output.pdf || magick scan.png output.pdf)
+  macOS    →  scanimage (same as Linux) + ImageMagick
     |
     v
-PDF saved to:  scans/<rollNumber>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf
+Multi-page:  each page → temp PNG in /tmp  →  convert page1.png page2.png ... → output.pdf
+Single-page: scan → temp PNG → output.pdf  (same as before)
+    |
+    v
+PDF saved to:  scans/<examCode>/<rollNumber>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf
     |
     v
 JSON response → { success, filename, filePath, device, platform }
@@ -159,10 +164,15 @@ SCANS_DIR=./scans
 # SCAN BEHAVIOUR
 # ─────────────────────────────────────────────────────────────────
 
-# Max time in milliseconds to wait for scanner command.
+# Max time in milliseconds to wait for scanner command (per page).
 # Default: 60000 (60 seconds)
 # Increase for slow network scanners: 120000
 SCAN_TIMEOUT_MS=60000
+
+# How long a multi-page scan session stays alive before auto-expiring (ms).
+# Default: 1800000 (30 minutes)
+# Sessions that exceed this are purged and their temp files cleaned up.
+SCAN_SESSION_TIMEOUT_MS=1800000
 
 # ─────────────────────────────────────────────────────────────────
 # LINUX / SANE ONLY
@@ -213,6 +223,7 @@ NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
 | `LOG_LEVEL` | No | Set `debug` for verbose troubleshooting |
 | `SCANS_DIR` | No | Change only if you want PDFs saved elsewhere |
 | `SCAN_TIMEOUT_MS` | No | Increase if scanner is slow or on network |
+| `SCAN_SESSION_TIMEOUT_MS` | No | Increase if multi-page sessions expire too quickly (default 30 min) |
 | `SANE_DEVICE` | **Recommended** | When more than one scanner/webcam is connected |
 | `SANE_MODE` | No | Set `Color` for colour exam documents |
 | `SANE_SKIP_RESOLUTION` | No | Set `true` only if you get "unrecognized option --resolution" |
@@ -334,6 +345,200 @@ GET http://localhost:4545/api/scan?rollNumber=ROLL123&examCode=MATH2026
   "message": "Scanner rejected the scan request (sane_start: Invalid argument). Most common causes: (1) no paper on the flatbed..."
 }
 ```
+
+---
+
+### Multi-Page Scanning (Session-based)
+
+When a student's answer sheet has multiple pages (e.g., front and back of a paper = 2 pages), use the multi-page session flow to scan all pages one by one and merge them into a single PDF.
+
+**How it works:**
+
+1. Start a session specifying the roll number, exam code, and total page count.
+2. For each page, place it on the flatbed and call the "scan page" endpoint.
+3. After all pages are scanned, call "complete" to merge them into one PDF.
+4. If you need to abort, call "cancel" to clean up temp files.
+
+The single-page `GET /api/scan` endpoint is unchanged and fully backward compatible. Use the session endpoints only when `pageCount > 1`.
+
+**Architecture:**
+
+```
+Admin Frontend                    Scanning Service (port 4545)
+     |                                    |
+     |  POST /api/scan/start              |
+     |  { rollNumber, examCode,           |
+     |    pageCount: 4 }                  |
+     |─────────────────────────────────►  |  Creates session, returns sessionId
+     |  ◄──────── { sessionId }           |
+     |                                    |
+     |  [User places page 1 on scanner]   |
+     |  POST /api/scan/page/:sessionId    |
+     |─────────────────────────────────►  |  scanimage → temp PNG #1
+     |  ◄──── { currentPage: 1,           |
+     |          remaining: 3 }            |
+     |                                    |
+     |  ... repeat for pages 2, 3, 4 ...  |
+     |                                    |
+     |  POST /api/scan/complete/:id       |
+     |─────────────────────────────────►  |  convert page1.png page2.png ... → output.pdf
+     |  ◄──── { filename, filePath }      |  Cleans up temp PNGs
+```
+
+---
+
+#### Start a multi-page scan session
+
+```
+POST http://localhost:4545/api/scan/start
+Content-Type: application/json
+```
+
+**Request body:**
+
+```json
+{
+  "rollNumber": "ROLL123",
+  "examCode": "MATH2026",
+  "pageCount": 4,
+  "resolution": 300
+}
+```
+
+| Field | Type | Required | Default | Notes |
+|-------|------|----------|---------|-------|
+| `rollNumber` | string | Yes | — | Used in final PDF filename |
+| `examCode` | string | Yes | — | Used in final PDF filename and folder |
+| `pageCount` | number | Yes | — | Total number of pages to scan (1–100) |
+| `resolution` | number | No | `300` | DPI — 72 to 1200 |
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "sessionId": "a1b2c3d4e5f6a1b2c3d4e5f6",
+  "totalPages": 4,
+  "message": "Multi-page scan session started. Scan 4 page(s) one by one."
+}
+```
+
+---
+
+#### Scan a page in the session
+
+Place the next page face-down on the flatbed, then call:
+
+```
+POST http://localhost:4545/api/scan/page/:sessionId
+```
+
+No request body needed. The service scans the page and stores the image as a temporary PNG.
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "sessionId": "a1b2c3d4e5f6a1b2c3d4e5f6",
+  "currentPage": 2,
+  "totalPages": 4,
+  "remaining": 2,
+  "message": "Page 2 scanned. Place the next page on the scanner and scan again."
+}
+```
+
+When `remaining` is `0`, all pages are done — call the complete endpoint.
+
+**Error response (e.g., all pages already scanned):**
+
+```json
+{
+  "success": false,
+  "message": "All 4 pages have already been scanned. Call POST /api/scan/complete/<sessionId> to finalize."
+}
+```
+
+---
+
+#### Complete the session (merge into PDF)
+
+After all pages are scanned, finalize the session to merge all pages into a single PDF:
+
+```
+POST http://localhost:4545/api/scan/complete/:sessionId
+```
+
+The response has the same shape as the single-page `GET /api/scan` endpoint:
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "filename": "ROLL123_MATH2026_2026-04-09T10-30-00.pdf",
+  "filePath": "/path/to/scans/MATH2026/ROLL123_MATH2026_2026-04-09T10-30-00.pdf",
+  "platform": "linux",
+  "device": "pixma:04A92759_01E3B00006EC",
+  "scansDirectory": "/path/to/scans",
+  "totalPages": 4,
+  "message": "Multi-page scan complete. 4 page(s) merged into ROLL123_MATH2026_2026-04-09T10-30-00.pdf"
+}
+```
+
+**Error response (not all pages scanned):**
+
+```json
+{
+  "success": false,
+  "message": "Only 2 of 4 pages scanned. Scan the remaining pages or cancel the session."
+}
+```
+
+---
+
+#### Cancel a session
+
+If you need to abort a multi-page scan (e.g., wrong roll number, scanner jam), cancel the session to clean up temporary files:
+
+```
+DELETE http://localhost:4545/api/scan/session/:sessionId
+```
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "message": "Session cancelled. 2 temporary page(s) cleaned up."
+}
+```
+
+---
+
+#### Example: Full multi-page scan with curl
+
+```bash
+# 1. Start a 2-page session (front + back of one paper)
+curl -X POST http://localhost:4545/api/scan/start \
+  -H "Content-Type: application/json" \
+  -d '{"rollNumber":"ROLL123","examCode":"MATH2026","pageCount":2}'
+# → { "sessionId": "abc123...", "totalPages": 2 }
+
+# 2. Place page 1 (front) on scanner, then scan
+curl -X POST http://localhost:4545/api/scan/page/abc123...
+# → { "currentPage": 1, "remaining": 1 }
+
+# 3. Place page 2 (back) on scanner, then scan
+curl -X POST http://localhost:4545/api/scan/page/abc123...
+# → { "currentPage": 2, "remaining": 0 }
+
+# 4. Merge into a single PDF
+curl -X POST http://localhost:4545/api/scan/complete/abc123...
+# → { "filename": "ROLL123_MATH2026_2026-04-09T10-30-00.pdf", ... }
+```
+
+> **Note:** The admin frontend automates this entire flow. When the user sets "Pages" > 1 and clicks "Scan", the UI walks them through each page with a progress bar and prompts.
 
 ---
 
@@ -688,9 +893,28 @@ brew install imagesnap
 ### Scan times out
 
 ```env
-# Increase timeout to 2 minutes
+# Increase timeout to 2 minutes (per page)
 SCAN_TIMEOUT_MS=120000
 ```
+
+### "Session not found" / "Session expired"
+
+Multi-page scan sessions are stored in memory and auto-expire after 30 minutes (default). Possible causes:
+
+- The session was already completed or cancelled.
+- The service was restarted during a session (sessions are not persisted to disk).
+- The session timed out — increase the limit:
+
+```env
+SCAN_SESSION_TIMEOUT_MS=3600000
+```
+
+### "Only X of Y pages scanned"
+
+You must scan all declared pages before calling `/api/scan/complete`. If you cannot scan all pages (e.g., paper jam), either:
+
+1. Cancel the session: `DELETE /api/scan/session/:sessionId`
+2. Or scan the remaining pages and then complete.
 
 ### Service not reachable from React (`Failed to fetch`)
 
@@ -728,9 +952,11 @@ scaning_nodejs/
 └── src/
     ├── app.js                Express app setup (CORS, Morgan, routes)
     ├── routes/
-    │   └── scan.routes.js    GET /api/health   GET /api/scan
+    │   ├── scan.routes.js           GET /api/health   GET /api/scan
+    │   └── scanSession.routes.js    POST /api/scan/start, /page, /complete, DELETE /session
     ├── services/
-    │   └── scanService.js    OS detection, device auto-detect, exec
+    │   ├── scanService.js           OS detection, device auto-detect, exec, multi-page merge
+    │   └── sessionManager.js        In-memory multi-page scan session store + auto-cleanup
     └── utils/
         ├── logger.js         Winston logger
         └── fileHandler.js    Output path builder + file validator

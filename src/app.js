@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const scanRoutes = require("./routes/scan.routes");
+const scanSessionRoutes = require("./routes/scanSession.routes");
 const docsRoutes = require("./routes/docs.routes");
 const documentationRoutes = require("./routes/documentation.routes");
 const logger = require("./utils/logger");
@@ -27,6 +28,7 @@ app.use(
 );
 
 app.use("/api", scanRoutes);
+app.use("/api", scanSessionRoutes);
 app.use("/api", docsRoutes);
 app.use("/", documentationRoutes);
 
