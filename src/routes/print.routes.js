@@ -13,7 +13,7 @@ const router = express.Router();
  *   html       {string}  HTML content to render and print
  *   base64Pdf  {string}  (future) pre-rendered PDF as base64
  *   printerName {string} optional — target printer (uses default if omitted)
- *   printType  {string}  "exam" (0.25in margins) or "omr" (0 margins, scale 0.95)
+ *   printType  {string}  "exam" (0.25in margins) or "omr" (0 margins, scale 1)
  *
  * Response (200): { success, message, jobId }
  * Response (4xx/5xx): { success: false, message, jobId }

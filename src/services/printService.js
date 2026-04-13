@@ -9,16 +9,18 @@ const logger = require("../utils/logger");
 const TEMP_DIR = path.join(os.tmpdir(), "print-scanning");
 
 const PDF_CONFIGS = {
+  /* Margins come from CSS @page inside the HTML (same as browser print preview). */
   exam: {
     format: "A4",
-    margin: { top: "0.25in", right: "0.25in", bottom: "0.25in", left: "0.25in" },
+    margin: { top: "0", right: "0", bottom: "0", left: "0" },
     printBackground: true,
+    preferCSSPageSize: true,
   },
   omr: {
     format: "A4",
     margin: { top: "0", right: "0", bottom: "0", left: "0" },
     printBackground: true,
-    scale: 0.95,
+    scale: 1,
   },
 };
 
