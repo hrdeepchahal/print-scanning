@@ -22,6 +22,9 @@
     "express": "^4.19.2",
     "marked": "^17.0.5",
     "morgan": "^1.10.0",
+    "pdf-to-printer": "^5.7.0",
+    "puppeteer": "^24.40.0",
+    "uuid": "^13.0.0",
     "winston": "^3.13.0"
   },
   "devDependencies": {

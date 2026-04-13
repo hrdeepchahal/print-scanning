@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Print Scanning — Scanning Service Docs</title>
+    <title>Print Scanning — Local Service Docs</title>
     <style>
       /* ── Reset & base ─────────────────────────────────────── */
       *,
@@ -24,6 +24,7 @@
         --green: #2dd98f;
         --red: #f75f5f;
         --yellow: #f7c948;
+        --orange: #f7a34f;
         --text: #e2e8f0;
         --muted: #8892aa;
         --code-bg: #141720;
@@ -96,7 +97,6 @@
       }
 
       .port-badge {
-        margin-left: auto;
         font-size: 12px;
         font-weight: 600;
         font-family: var(--font-mono);
@@ -110,6 +110,7 @@
       .header-links {
         display: flex;
         gap: 6px;
+        margin-left: auto;
       }
       .header-links a {
         font-size: 12px;
@@ -197,7 +198,7 @@
       main {
         margin-left: var(--sidebar-w);
         flex: 1;
-        max-width: 860px;
+        max-width: 900px;
         padding: 40px 52px 80px;
       }
 
@@ -326,7 +327,7 @@
         background: color-mix(in srgb, var(--surface2) 40%, transparent);
       }
 
-      /* Blockquotes (> tip / note) */
+      /* Blockquotes */
       main blockquote {
         border-left: 3px solid var(--yellow);
         background: color-mix(in srgb, var(--yellow) 6%, transparent);
@@ -348,17 +349,17 @@
         margin: 36px 0;
       }
 
-      /* ── Status cards at top ──────────────────────────────── */
+      /* ── Status cards ─────────────────────────────────────── */
       .status-bar {
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
-        margin-bottom: 32px;
+        margin-bottom: 24px;
       }
 
       .status-card {
         flex: 1;
-        min-width: 160px;
+        min-width: 140px;
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -393,6 +394,11 @@
         background: var(--green);
         box-shadow: 0 0 6px var(--green);
       }
+      .dot-red {
+        background: var(--red);
+        box-shadow: 0 0 6px var(--red);
+        animation: none;
+      }
 
       @keyframes pulse {
         0%,
@@ -402,6 +408,143 @@
         50% {
           opacity: 0.4;
         }
+      }
+
+      /* ── Panel (shared for scan/print explorers) ──────────── */
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px 24px;
+        margin-bottom: 20px;
+      }
+      .panel-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .panel-header strong {
+        font-size: 15px;
+      }
+      .panel-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-weight: 600;
+      }
+      .panel-badge-scan {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+        color: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+      }
+      .panel-badge-print {
+        background: color-mix(in srgb, var(--orange) 12%, transparent);
+        color: var(--orange);
+        border: 1px solid color-mix(in srgb, var(--orange) 25%, transparent);
+      }
+
+      /* ── Tabs ─────────────────────────────────────────────── */
+      .tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 24px;
+        border-bottom: 2px solid var(--border);
+      }
+      .tab-btn {
+        padding: 10px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tab-btn:hover {
+        color: var(--text);
+      }
+      .tab-btn.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+
+      /* ── Buttons ──────────────────────────────────────────── */
+      .btn {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+      }
+      .btn-default {
+        background: var(--surface2);
+        color: var(--muted);
+      }
+      .btn-default:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .btn-primary {
+        background: color-mix(in srgb, var(--accent) 15%, transparent);
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+      }
+      .btn-primary:hover {
+        background: color-mix(in srgb, var(--accent) 25%, transparent);
+      }
+      .btn-primary:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .btn-success {
+        background: color-mix(in srgb, var(--green) 12%, transparent);
+        color: var(--green);
+        border-color: color-mix(in srgb, var(--green) 28%, transparent);
+      }
+
+      /* ── Select ───────────────────────────────────────────── */
+      .select {
+        background: var(--code-bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        font-family: var(--font-mono);
+        min-width: 220px;
+        cursor: pointer;
+      }
+
+      /* ── Result box ───────────────────────────────────────── */
+      .result-box {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 16px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--muted);
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 200px;
+        overflow-y: auto;
+        margin-top: 12px;
       }
 
       /* ── Responsive ───────────────────────────────────────── */
@@ -420,18 +563,15 @@
     <!-- ── Header ── -->
     <header>
       <a class="logo" href="/">
-        <span class="logo-icon">📠</span>
+        <span class="logo-icon">⚡</span>
         Print Scanning
       </a>
-      <span>Scanning Service</span>
-      <span class="badge">● LIVE</span>
-      <div class="header-links" style="margin-left: auto">
+      <span>Local Service</span>
+      <span class="badge" id="status-badge">● CHECKING</span>
+      <div class="header-links">
         <a href="/api/health" target="_blank">Health</a>
-        <a href="/api/scan?rollNumber=TEST&examCode=DEMO" target="_blank"
-          >Test Scan</a
-        >
+        <a href="/api/printers" target="_blank">Printers</a>
         <a href="/api/docs" target="_blank">Docs API</a>
-        <a href="#multi-page-scanning-session-based">Multi-Page</a>
       </div>
       <span class="port-badge">:4545</span>
     </header>
@@ -448,11 +588,11 @@
 
       <!-- ── Main doc content ── -->
       <main id="content">
-        <!-- Status bar -->
+        <!-- Status cards -->
         <div class="status-bar">
           <div class="status-card">
             <div class="label">Service</div>
-            <div class="value"><span class="dot dot-green"></span>Running</div>
+            <div class="value" id="svc-status"><span class="dot dot-green"></span>Running</div>
           </div>
           <div class="status-card">
             <div class="label">Port</div>
@@ -463,221 +603,321 @@
             <div class="value" id="platform-val">...</div>
           </div>
           <div class="status-card">
-            <div class="label">Scan Endpoint</div>
-            <div class="value">/api/scan</div>
+            <div class="label">Capabilities</div>
+            <div class="value" id="caps-val">...</div>
           </div>
           <div class="status-card">
-            <div class="label">Multi-Page</div>
-            <div class="value">/api/scan/start</div>
+            <div class="label">Default Printer</div>
+            <div class="value" id="printer-val">...</div>
           </div>
         </div>
 
-        <!-- Quick SANE_DEVICE helper -->
-        <div class="status-card" style="margin-bottom: 24px">
-          <div class="label">How to get SANE_DEVICE</div>
-          <div
-            class="value"
-            style="font-family: inherit; font-size: 13px; line-height: 1.6"
-          >
-            <strong>Linux:</strong> run <code>scanimage -L</code>, copy text
-            inside backticks, set <code>SANE_DEVICE=...</code> in
-            <code>.env</code>.<br />
-            <strong>macOS:</strong> default is <code>imagesnap</code> (use
-            <code>imagesnap -l</code>); use <code>SANE_DEVICE</code> only if you
-            installed SANE and use <code>scanimage -L</code>.<br />
-            <strong>Windows:</strong> <code>SANE_DEVICE</code> not used; use
-            NAPS2 (<code>NAPS2_PATH</code> / profile).
+        <!-- ── Tab navigation: Scanning | Printing ── -->
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-scan">📠 Scanning</button>
+          <button class="tab-btn" data-tab="tab-print">🖨️ Printing</button>
+        </div>
+
+        <!-- ══════════════ TAB: SCANNING ══════════════ -->
+        <div class="tab-content active" id="tab-scan">
+          <!-- Quick SANE_DEVICE helper -->
+          <div class="panel">
+            <div class="panel-header">
+              <span style="font-size:18px">🔧</span>
+              <strong>Scanner Setup</strong>
+              <span class="panel-badge panel-badge-scan">Quick Reference</span>
+            </div>
+            <div style="font-size:13px;line-height:1.7">
+              <strong>Linux:</strong> run <code>scanimage -L</code>, copy the device name, set <code>SANE_DEVICE=...</code> in <code>.env</code>.<br/>
+              <strong>macOS:</strong> same as Linux. Install SANE + ImageMagick via Homebrew.<br/>
+              <strong>Windows:</strong> install <a href="https://www.naps2.com" target="_blank">NAPS2</a>, set <code>NAPS2_PATH</code> in <code>.env</code> if non-default location.
+            </div>
+          </div>
+
+          <!-- Scanned Documents Explorer -->
+          <div class="panel">
+            <div class="panel-header">
+              <span style="font-size:18px">📂</span>
+              <strong>Scanned Documents Explorer</strong>
+              <span class="panel-badge panel-badge-scan">Live</span>
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+              <select id="exam-select" class="select">
+                <option value="">— select exam —</option>
+              </select>
+              <button id="reload-exams-btn" class="btn btn-default">↺ Refresh</button>
+              <span id="exam-count" style="font-size:12px;color:var(--muted)"></span>
+            </div>
+
+            <div id="docs-table-wrap" style="display:none">
+              <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead>
+                  <tr>
+                    <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;text-align:left;border:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.6px">Filename</th>
+                    <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;text-align:left;border:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.6px;width:90px">Size</th>
+                    <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;text-align:left;border:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.6px;width:170px">Scanned at</th>
+                    <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;text-align:center;border:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.6px;width:80px">Preview</th>
+                  </tr>
+                </thead>
+                <tbody id="docs-tbody"></tbody>
+              </table>
+              <p id="no-docs-msg" style="display:none;color:var(--muted);font-size:13px;margin-top:10px">No scanned documents found for this exam yet.</p>
+            </div>
+            <p id="docs-status" style="font-size:12px;color:var(--muted);margin-top:8px"></p>
           </div>
         </div>
 
-        <!-- ── Live Docs API Explorer ── -->
-        <div
-          id="docs-explorer"
-          style="
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px 24px;
-            margin-bottom: 32px;
-          "
-        >
-          <div
-            style="
-              display: flex;
-              align-items: center;
-              gap: 10px;
-              margin-bottom: 16px;
-            "
-          >
-            <span style="font-size: 18px">📂</span>
-            <strong style="font-size: 15px">Scanned Documents Explorer</strong>
-            <span
-              style="
-                font-size: 11px;
-                padding: 2px 8px;
-                border-radius: 20px;
-                background: color-mix(in srgb, var(--accent) 12%, transparent);
-                color: var(--accent);
-                border: 1px solid
-                  color-mix(in srgb, var(--accent) 25%, transparent);
-              "
-            >
-              Live
-            </span>
+        <!-- ══════════════ TAB: PRINTING ══════════════ -->
+        <div class="tab-content" id="tab-print">
+          <!-- Printer Setup Guide -->
+          <div class="panel">
+            <div class="panel-header">
+              <span style="font-size:18px">🔧</span>
+              <strong>Printer Setup Guide</strong>
+              <span class="panel-badge panel-badge-print">All Platforms</span>
+            </div>
+            <div style="font-size:13px;line-height:1.8">
+              <h4 style="margin:0 0 8px;font-size:14px;color:var(--accent)">Linux (Ubuntu / Debian)</h4>
+              <ol style="margin:0 0 14px 18px">
+                <li>Install CUPS: <code>sudo apt install cups -y</code></li>
+                <li>Start CUPS: <code>sudo systemctl enable --now cups</code></li>
+                <li>Add your printer via CUPS web UI: <a href="http://localhost:631" target="_blank">http://localhost:631</a></li>
+                <li>Verify: <code>lpstat -p -d</code> should list your printer</li>
+                <li>Test: <code>echo "test" | lp</code></li>
+              </ol>
+
+              <h4 style="margin:0 0 8px;font-size:14px;color:var(--accent)">Windows</h4>
+              <ol style="margin:0 0 14px 18px">
+                <li>Connect your printer normally (USB or network)</li>
+                <li>Ensure the printer appears in <strong>Settings &gt; Printers &amp; Scanners</strong></li>
+                <li>No additional setup needed — <code>pdf-to-printer</code> handles everything</li>
+              </ol>
+
+              <h4 style="margin:0 0 8px;font-size:14px;color:var(--accent)">macOS</h4>
+              <ol style="margin:0 0 14px 18px">
+                <li>CUPS is pre-installed on macOS</li>
+                <li>Add your printer in <strong>System Preferences &gt; Printers &amp; Scanners</strong></li>
+                <li>Verify: <code>lpstat -p -d</code> should list your printer</li>
+              </ol>
+
+              <h4 style="margin:0 0 8px;font-size:14px;color:var(--green)">Chromium (auto-installed)</h4>
+              <p style="margin:0;color:var(--muted)">Puppeteer downloads its own Chromium on <code>npm install</code>. No manual browser install needed.</p>
+            </div>
           </div>
 
-          <!-- Exam selector row -->
-          <div
-            style="
-              display: flex;
-              gap: 10px;
-              flex-wrap: wrap;
-              align-items: center;
-              margin-bottom: 16px;
-            "
-          >
-            <select
-              id="exam-select"
-              style="
-                background: var(--code-bg);
-                color: var(--text);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 13px;
-                font-family: var(--font-mono);
-                min-width: 220px;
-                cursor: pointer;
-              "
-            >
-              <option value="">— select exam —</option>
-            </select>
-            <button
-              id="reload-exams-btn"
-              style="
-                background: var(--surface2);
-                color: var(--muted);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 12px;
-                cursor: pointer;
-                transition: all 0.15s;
-              "
-            >
-              ↺ Refresh
-            </button>
-            <span
-              id="exam-count"
-              style="font-size: 12px; color: var(--muted)"
-            ></span>
+          <!-- Printer List (live) -->
+          <div class="panel">
+            <div class="panel-header">
+              <span style="font-size:18px">🖨️</span>
+              <strong>Available Printers</strong>
+              <span class="panel-badge panel-badge-print">Live</span>
+            </div>
+            <div id="printer-list-area">
+              <p style="font-size:13px;color:var(--muted)">Loading printers...</p>
+            </div>
+            <button id="reload-printers-btn" class="btn btn-default" style="margin-top:12px">↺ Refresh Printers</button>
           </div>
 
-          <!-- Document list table -->
-          <div id="docs-table-wrap" style="display: none">
-            <table
-              style="width: 100%; border-collapse: collapse; font-size: 13px"
-            >
+          <!-- Test Print -->
+          <div class="panel">
+            <div class="panel-header">
+              <span style="font-size:18px">🧪</span>
+              <strong>Test Print</strong>
+              <span class="panel-badge panel-badge-print">Interactive</span>
+            </div>
+            <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+              Send a test page to verify your printer is working with this service.
+            </p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+              <select id="print-printer-select" class="select" style="min-width:200px">
+                <option value="">System default</option>
+              </select>
+              <select id="print-type-select" class="select" style="min-width:120px">
+                <option value="exam">Exam (0.25in margins)</option>
+                <option value="omr">OMR (zero margins)</option>
+              </select>
+              <button id="send-test-print-btn" class="btn btn-primary">🖨️ Send Test Print</button>
+            </div>
+            <div id="print-result" class="result-box" style="display:none"></div>
+          </div>
+
+          <!-- API Reference card -->
+          <div class="panel">
+            <div class="panel-header">
+              <span style="font-size:18px">📡</span>
+              <strong>Print API Quick Reference</strong>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
               <thead>
                 <tr>
-                  <th
-                    style="
-                      background: var(--surface2);
-                      color: var(--muted);
-                      padding: 8px 12px;
-                      text-align: left;
-                      border: 1px solid var(--border);
-                      font-size: 11px;
-                      text-transform: uppercase;
-                      letter-spacing: 0.6px;
-                    "
-                  >
-                    Filename
-                  </th>
-                  <th
-                    style="
-                      background: var(--surface2);
-                      color: var(--muted);
-                      padding: 8px 12px;
-                      text-align: left;
-                      border: 1px solid var(--border);
-                      font-size: 11px;
-                      text-transform: uppercase;
-                      letter-spacing: 0.6px;
-                      width: 90px;
-                    "
-                  >
-                    Size
-                  </th>
-                  <th
-                    style="
-                      background: var(--surface2);
-                      color: var(--muted);
-                      padding: 8px 12px;
-                      text-align: left;
-                      border: 1px solid var(--border);
-                      font-size: 11px;
-                      text-transform: uppercase;
-                      letter-spacing: 0.6px;
-                      width: 170px;
-                    "
-                  >
-                    Scanned at
-                  </th>
-                  <th
-                    style="
-                      background: var(--surface2);
-                      color: var(--muted);
-                      padding: 8px 12px;
-                      text-align: center;
-                      border: 1px solid var(--border);
-                      font-size: 11px;
-                      text-transform: uppercase;
-                      letter-spacing: 0.6px;
-                      width: 80px;
-                    "
-                  >
-                    Preview
-                  </th>
+                  <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;border:1px solid var(--border);font-size:11px;text-transform:uppercase;width:100px">Method</th>
+                  <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;border:1px solid var(--border);font-size:11px;text-transform:uppercase">Endpoint</th>
+                  <th style="background:var(--surface2);color:var(--muted);padding:8px 12px;border:1px solid var(--border);font-size:11px;text-transform:uppercase">Description</th>
                 </tr>
               </thead>
-              <tbody id="docs-tbody"></tbody>
+              <tbody>
+                <tr>
+                  <td style="padding:8px 12px;border:1px solid var(--border)"><code style="color:var(--green)">GET</code></td>
+                  <td style="padding:8px 12px;border:1px solid var(--border);font-family:var(--font-mono);font-size:12px">/api/printers</td>
+                  <td style="padding:8px 12px;border:1px solid var(--border)">List all available printers + system default</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 12px;border:1px solid var(--border)"><code style="color:var(--orange)">POST</code></td>
+                  <td style="padding:8px 12px;border:1px solid var(--border);font-family:var(--font-mono);font-size:12px">/api/print</td>
+                  <td style="padding:8px 12px;border:1px solid var(--border)">Silent print HTML content. Body: <code>{ html, printType, printerName? }</code></td>
+                </tr>
+              </tbody>
             </table>
-            <p
-              id="no-docs-msg"
-              style="
-                display: none;
-                color: var(--muted);
-                font-size: 13px;
-                margin-top: 10px;
-              "
-            >
-              No scanned documents found for this exam yet.
-            </p>
           </div>
-
-          <p
-            id="docs-status"
-            style="font-size: 12px; color: var(--muted); margin-top: 8px"
-          ></p>
         </div>
 
-        <!-- README rendered as HTML -->
+        <!-- README rendered as HTML (always visible below tabs) -->
         {{contentHtml}}
       </main>
     </div>
 
     <script>
-      // ── Populate platform from /api/health ──────────────────
+      // ── Tab switching ───────────────────────────────────────
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"))
+          document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"))
+          btn.classList.add("active")
+          document.getElementById(btn.dataset.tab).classList.add("active")
+        })
+      })
+
+      // ── Health check → populate status cards ────────────────
       fetch("/api/health")
-        .then((r) => r.json())
-        .then((d) => {
-          document.getElementById("platform-val").textContent =
-            d.platform || "—"
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById("platform-val").textContent = d.platform || "—"
+          const caps = d.capabilities || []
+          document.getElementById("caps-val").textContent = caps.join(", ") || "—"
+          document.getElementById("status-badge").textContent = "● LIVE"
+          document.getElementById("status-badge").style.color = "var(--green)"
         })
         .catch(() => {
           document.getElementById("platform-val").textContent = "—"
+          document.getElementById("caps-val").textContent = "—"
+          document.getElementById("status-badge").textContent = "● OFFLINE"
+          document.getElementById("status-badge").style.color = "var(--red)"
         })
+
+      // ── Load printers → status card + printer list + select ─
+      function loadPrinters() {
+        const area = document.getElementById("printer-list-area")
+        const sel = document.getElementById("print-printer-select")
+        area.innerHTML = '<p style="font-size:13px;color:var(--muted)">Loading printers...</p>'
+
+        fetch("/api/printers")
+          .then(r => r.json())
+          .then(d => {
+            document.getElementById("printer-val").textContent = d.default || "None"
+
+            if (!d.success || !d.printers.length) {
+              area.innerHTML = '<p style="font-size:13px;color:var(--red)">No printers detected. Check your printer connection and CUPS/driver setup.</p>'
+              return
+            }
+
+            let html = '<div style="display:flex;flex-wrap:wrap;gap:10px">'
+            d.printers.forEach(name => {
+              const isDefault = name === d.default
+              html += `<div style="
+                background:var(--code-bg);border:1px solid ${isDefault ? 'var(--green)' : 'var(--border)'};
+                border-radius:6px;padding:8px 14px;font-size:13px;
+                font-family:var(--font-mono);color:${isDefault ? 'var(--green)' : 'var(--text)'};
+                display:flex;align-items:center;gap:8px;">
+                ${isDefault ? '<span class="dot dot-green" style="animation:none"></span>' : ''}
+                ${name}${isDefault ? ' <span style="font-size:10px;opacity:.6">(default)</span>' : ''}
+              </div>`
+            })
+            html += '</div>'
+            area.innerHTML = html
+
+            sel.innerHTML = '<option value="">System default</option>'
+            d.printers.forEach(name => {
+              const opt = document.createElement("option")
+              opt.value = name
+              opt.textContent = name + (name === d.default ? " (default)" : "")
+              sel.appendChild(opt)
+            })
+          })
+          .catch(() => {
+            document.getElementById("printer-val").textContent = "Error"
+            area.innerHTML = '<p style="font-size:13px;color:var(--red)">Failed to reach /api/printers. Is the service running?</p>'
+          })
+      }
+      loadPrinters()
+      document.getElementById("reload-printers-btn").addEventListener("click", loadPrinters)
+
+      // ── Test Print ──────────────────────────────────────────
+      document.getElementById("send-test-print-btn").addEventListener("click", async () => {
+        const btn = document.getElementById("send-test-print-btn")
+        const result = document.getElementById("print-result")
+        const printer = document.getElementById("print-printer-select").value
+        const printType = document.getElementById("print-type-select").value
+
+        btn.disabled = true
+        btn.textContent = "⏳ Printing..."
+        result.style.display = "block"
+        result.textContent = "Sending test page to printer..."
+        result.style.color = "var(--muted)"
+
+        const testHtml = `<!DOCTYPE html><html><head><style>
+          body{font-family:Arial,sans-serif;padding:40px;color:#222}
+          h1{color:#2563eb;border-bottom:2px solid #2563eb;padding-bottom:8px}
+          .info{margin:20px 0;padding:16px;background:#f0f4ff;border-radius:8px;border:1px solid #cbd5e1}
+          table{width:100%;border-collapse:collapse;margin-top:16px}
+          th,td{padding:8px 12px;border:1px solid #e2e8f0;text-align:left;font-size:13px}
+          th{background:#f8fafc;font-weight:600}
+          .footer{margin-top:30px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8}
+        </style></head><body>
+          <h1>Print Scanning — Print Test Page</h1>
+          <div class="info">
+            <strong>Service:</strong> scanning-nodejs (port 4545)<br>
+            <strong>Print Type:</strong> ${printType}<br>
+            <strong>Printer:</strong> ${printer || "System Default"}<br>
+            <strong>Timestamp:</strong> ${new Date().toLocaleString()}
+          </div>
+          <p>If you can read this page, your printer is correctly configured and working with the Print Scanning local service.</p>
+          <table>
+            <tr><th>Check</th><th>Status</th></tr>
+            <tr><td>Service Running</td><td>OK</td></tr>
+            <tr><td>Puppeteer (HTML to PDF)</td><td>OK</td></tr>
+            <tr><td>Print Spooler</td><td>OK</td></tr>
+            <tr><td>Paper Output</td><td>OK (you are reading this)</td></tr>
+          </table>
+          <div class="footer">Print Scanning Local Service — Test Page — ${new Date().toISOString()}</div>
+        </body></html>`
+
+        try {
+          const body = { html: testHtml, printType }
+          if (printer) body.printerName = printer
+
+          const res = await fetch("/api/print", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+          const data = await res.json()
+
+          if (data.success) {
+            result.style.color = "var(--green)"
+            result.textContent = `Print job queued successfully!\nJob ID: ${data.jobId}\nPrinter: ${printer || "System Default"}\nType: ${printType}`
+          } else {
+            result.style.color = "var(--red)"
+            result.textContent = `Print failed: ${data.message}`
+          }
+        } catch (err) {
+          result.style.color = "var(--red)"
+          result.textContent = `Error: ${err.message}\n\nMake sure the service is running on port 4545.`
+        } finally {
+          btn.disabled = false
+          btn.textContent = "🖨️ Send Test Print"
+        }
+      })
 
       // ── Active sidebar link on scroll ───────────────────────
       const headings = document.querySelectorAll("main h2[id], main h3[id]")
@@ -703,7 +943,7 @@
 
       headings.forEach((h) => observer.observe(h))
 
-      // ── Docs API Explorer ───────────────────────────────────
+      // ── Docs API Explorer (scan tab) ────────────────────────
       const examSelect = document.getElementById("exam-select")
       const reloadBtn = document.getElementById("reload-exams-btn")
       const examCount = document.getElementById("exam-count")
@@ -719,11 +959,8 @@
       }
 
       function fmtDate(iso) {
-        try {
-          return new Date(iso).toLocaleString()
-        } catch {
-          return iso
-        }
+        try { return new Date(iso).toLocaleString() }
+        catch { return iso }
       }
 
       async function loadExams() {
@@ -778,18 +1015,12 @@
           d.documents.forEach(({ filename, size, createdAt, previewUrl }) => {
             const tr = document.createElement("tr")
             tr.innerHTML = `
-          <td style="padding:8px 12px;border:1px solid var(--border);font-family:var(--font-mono);font-size:12px;color:#c9d5f0;word-break:break-all;">${filename}</td>
-          <td style="padding:8px 12px;border:1px solid var(--border);font-size:12px;color:var(--muted);">${fmtSize(size)}</td>
-          <td style="padding:8px 12px;border:1px solid var(--border);font-size:12px;color:var(--muted);">${fmtDate(createdAt)}</td>
-          <td style="padding:8px 12px;border:1px solid var(--border);text-align:center;">
-            <a href="${previewUrl}" target="_blank" rel="noreferrer" style="
-              font-size:11px;font-weight:600;padding:3px 10px;border-radius:5px;
-              background:color-mix(in srgb,var(--green) 12%,transparent);
-              color:var(--green);border:1px solid color-mix(in srgb,var(--green) 28%,transparent);
-              text-decoration:none;transition:all .15s;white-space:nowrap;">
-              Open PDF
-            </a>
-          </td>`
+              <td style="padding:8px 12px;border:1px solid var(--border);font-family:var(--font-mono);font-size:12px;color:#c9d5f0;word-break:break-all">${filename}</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);font-size:12px;color:var(--muted)">${fmtSize(size)}</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);font-size:12px;color:var(--muted)">${fmtDate(createdAt)}</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);text-align:center">
+                <a href="${previewUrl}" target="_blank" rel="noreferrer" class="btn btn-success" style="font-size:11px;padding:3px 10px;text-decoration:none">Open PDF</a>
+              </td>`
             docsTbody.appendChild(tr)
           })
           docsTableWrap.style.display = "block"
@@ -800,10 +1031,7 @@
 
       examSelect.addEventListener("change", () => {
         if (examSelect.value) loadDocs(examSelect.value)
-        else {
-          docsTableWrap.style.display = "none"
-          docsStatus.textContent = ""
-        }
+        else { docsTableWrap.style.display = "none"; docsStatus.textContent = "" }
       })
 
       reloadBtn.addEventListener("click", () => {
@@ -812,55 +1040,21 @@
         docsStatus.textContent = ""
       })
 
-      reloadBtn.onmouseenter = () => {
-        reloadBtn.style.color = "var(--text)"
-        reloadBtn.style.borderColor = "var(--accent)"
-      }
-      reloadBtn.onmouseleave = () => {
-        reloadBtn.style.color = "var(--muted)"
-        reloadBtn.style.borderColor = "var(--border)"
-      }
-
-      // Load exam list on page open
       loadExams()
 
-      // ── Copy button on code blocks ───────────────────────────
+      // ── Copy button on code blocks ──────────────────────────
       document.querySelectorAll("pre").forEach((pre) => {
         const btn = document.createElement("button")
         btn.textContent = "Copy"
-        btn.style.cssText = [
-          "position:absolute",
-          "top:10px",
-          "right:10px",
-          "font-size:11px",
-          "font-weight:600",
-          "padding:3px 10px",
-          "border-radius:5px",
-          "background:#22263a",
-          "color:#8892aa",
-          "border:1px solid #2e3350",
-          "cursor:pointer",
-          "transition:all .15s",
-          "font-family:inherit",
-        ].join(";")
-        btn.onmouseenter = () => {
-          btn.style.color = "#e2e8f0"
-          btn.style.borderColor = "#4f8ef7"
-        }
-        btn.onmouseleave = () => {
-          btn.style.color = "#8892aa"
-          btn.style.borderColor = "#2e3350"
-        }
+        btn.className = "btn btn-default"
+        btn.style.cssText = "position:absolute;top:10px;right:10px;font-size:11px;padding:3px 10px"
         btn.onclick = () => {
           navigator.clipboard
             .writeText(pre.querySelector("code")?.innerText || "")
             .then(() => {
               btn.textContent = "Copied!"
-              btn.style.color = "#2dd98f"
-              setTimeout(() => {
-                btn.textContent = "Copy"
-                btn.style.color = "#8892aa"
-              }, 1500)
+              btn.style.color = "var(--green)"
+              setTimeout(() => { btn.textContent = "Copy"; btn.style.color = "" }, 1500)
             })
         }
         pre.style.position = "relative"

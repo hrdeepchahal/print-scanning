@@ -4,6 +4,7 @@ const morgan = require("morgan");
 const scanRoutes = require("./routes/scan.routes");
 const scanSessionRoutes = require("./routes/scanSession.routes");
 const docsRoutes = require("./routes/docs.routes");
+const printRoutes = require("./routes/print.routes");
 const documentationRoutes = require("./routes/documentation.routes");
 const logger = require("./utils/logger");
 
@@ -30,6 +31,7 @@ app.use(
 app.use("/api", scanRoutes);
 app.use("/api", scanSessionRoutes);
 app.use("/api", docsRoutes);
+app.use("/api", printRoutes);
 app.use("/", documentationRoutes);
 
 // Global error handler — no unhandled crashes

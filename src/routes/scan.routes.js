@@ -13,10 +13,11 @@ router.get("/health", (req, res) => {
   res.json({
     success: true,
     status: "ok",
-    service: "Print Scanning Service",
+    service: "Print Scanning Local Service",
     platform: process.platform,
     port: process.env.PORT || 4545,
     timestamp: new Date().toISOString(),
+    capabilities: ["scan", "print"],
   });
 });
 

@@ -1,8 +1,10 @@
-# Print Scanning — Scanning Service
+# Print Scanning — Local Service
 
-Cross-platform document scanning backend for Print Scanning. Supports Windows, Linux, and macOS. Tested and verified with Canon i-SENSYS MF3010.
+Cross-platform **scanning** and **silent printing** backend for Print Scanning.  
+Runs on **Linux**, **Windows**, and **macOS**. Tested with Canon i-SENSYS MF3010.
 
-**Port:** `4545` (fixed, never change)
+**Port:** `4545` (fixed, never change)  
+**Capabilities:** `scan`, `print`
 
 ---
 
@@ -16,11 +18,11 @@ bash start.sh
 start.bat
 ```
 
-Then open in your browser:
+Open in your browser:
 
 ```
-http://localhost:4545/doc          ← Full documentation UI
-http://localhost:4545/api/health   ← Health check JSON
+http://localhost:4545/            ← Full documentation UI (this page)
+http://localhost:4545/api/health  ← Health check JSON
 ```
 
 ---
@@ -28,40 +30,31 @@ http://localhost:4545/api/health   ← Health check JSON
 ## Architecture
 
 ```
-React (Admin Frontend / ScanOMRSheets.js)
-    |
-    | Single page:  GET /api/scan?examCode=MATH2026[&uniqueId=ROLL123]
-    | Multi-page:   POST /api/scan/start  →  POST /api/scan/page/:id (×N)  →  POST /api/scan/complete/:id
-    v
-Express Server — scaning_nodejs (port 4545)
-    |
-    | 1. Detect OS (process.platform)
-    | 2. Linux: auto-detect scanner device (scanimage -L → skip webcam → pick pixma/canon)
-    v
-OS Scanner Command
-  Windows  →  naps2.console.exe -o "output.pdf" --noprofile
-  Linux    →  scanimage --device-name="..." --mode=Gray --resolution=300 --format=png -o /tmp/scan.png
-               && (convert scan.png output.pdf || magick scan.png output.pdf)
-               && rm -f scan.png
-  macOS    →  scanimage (same as Linux) + ImageMagick
-    |
-    v
-Multi-page:  each page → temp PNG in /tmp  →  convert page1.png page2.png ... → output.pdf
-Single-page: scan → temp PNG → output.pdf  (same as before)
-    |
-    v
-PDF saved to:  scans/<examCode>/<uniqueId>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf  (uniqueId provided)
-               scans/<examCode>/<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf              (no uniqueId)
-    |
-    v
-JSON response → { success, filename, filePath, device, platform }
+Admin Frontend (React)
+    │
+    ├── Scanning ──► GET  /api/scan       (single page)
+    │                POST /api/scan/start  (multi-page session)
+    │
+    ├── Printing ──► POST /api/print      (silent print HTML/PDF)
+    │                GET  /api/printers   (list available printers)
+    │
+    └── Health ────► GET  /api/health     (service status + capabilities)
+    │
+    ▼
+Express Server — scaning-nodejs (port 4545)
+    │
+    ├─ Scanning Pipeline:
+    │   OS Detection → Scanner Command → PNG → ImageMagick → PDF → scans/<examCode>/
+    │
+    └─ Printing Pipeline:
+        HTML → Puppeteer (headless Chromium) → PDF → OS Print Spooler → Physical Printer
 ```
 
 ---
 
 ## System Prerequisites
 
-### All platforms
+### All Platforms
 
 - **Node.js v18 LTS or higher** — https://nodejs.org
 
@@ -69,29 +62,29 @@ JSON response → { success, filename, filePath, device, platform }
 
 ```bash
 sudo apt update
-sudo apt install sane-utils imagemagick -y
+sudo apt install sane-utils imagemagick cups -y
+sudo systemctl enable --now cups
 ```
 
-| Tool | Package | Used for |
-|------|---------|----------|
-| `scanimage` | `sane-utils` | Controls scanner via SANE |
-| `convert` | `imagemagick` | PNG → PDF (ImageMagick ≤6) |
-| `magick` | `imagemagick` | PNG → PDF (ImageMagick ≥7, auto-fallback) |
+| Package | Used for |
+|---------|----------|
+| `sane-utils` | Scanner access via `scanimage` |
+| `imagemagick` | PNG → PDF conversion (`convert` / `magick`) |
+| `cups` | Print spooler — the `lp` command sends jobs to printers |
 
 ### Windows
 
-1. Download **NAPS2** from https://www.naps2.com
+1. Download **NAPS2** from https://www.naps2.com (for scanning)
 2. Install with default settings → installs to `C:\Program Files\NAPS2\`
-3. Service calls `naps2.console.exe` automatically
+3. Connect your printer normally (USB or network) — no extra print setup needed
 
 ### macOS
 
 ```bash
-# Install Homebrew first if not present
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
 brew install imagesnap imagemagick
 ```
+
+CUPS is pre-installed on macOS. Add your printer in **System Preferences > Printers & Scanners**.
 
 > Grant Camera/Scanner permissions: System Preferences → Security & Privacy → Camera → allow Terminal.
 
@@ -103,6 +96,8 @@ brew install imagesnap imagemagick
 cd scaning_nodejs
 npm install
 ```
+
+> Puppeteer downloads its own Chromium binary automatically. No manual browser install needed.
 
 ---
 
@@ -118,15 +113,13 @@ bash start.sh
 start.bat
 ```
 
-The startup scripts check for Node.js, check for scanner tools, install npm deps if missing, then start the server.
-
 ### Option 2 — Manual
 
 ```bash
 node index.js
 ```
 
-### Option 3 — Development mode (auto-restart on file save)
+### Option 3 — Development mode (auto-restart)
 
 ```bash
 npm run dev
@@ -136,229 +129,147 @@ npm run dev
 
 ## Environment Variables
 
-Create a `.env` file inside `scaning_nodejs/` (same folder as `index.js`):
+Create a `.env` file in the project root (same folder as `index.js`):
 
 ```env
-# ─────────────────────────────────────────────────────────────────
-# SERVER
-# ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+#  SERVER
+# ═══════════════════════════════════════════════════════════════
 
-# Port the service listens on. Always 4545 — do not change.
 PORT=4545
-
-# Log level: error | warn | info | http | debug
-# Default: info
 LOG_LEVEL=info
 
-# ─────────────────────────────────────────────────────────────────
-# OUTPUT
-# ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+#  SCANNING — Output
+# ═══════════════════════════════════════════════════════════════
 
-# Where scanned PDFs are saved.
-# Default: ./scans  (inside this project folder)
-# Use absolute path to save elsewhere:
-#   SCANS_DIR=/home/user/Documents/ExamScans
-#   SCANS_DIR=C:\ExamScans              (Windows)
 SCANS_DIR=./scans
-
-# ─────────────────────────────────────────────────────────────────
-# SCAN BEHAVIOUR
-# ─────────────────────────────────────────────────────────────────
-
-# Max time in milliseconds to wait for scanner command (per page).
-# Default: 60000 (60 seconds)
-# Increase for slow network scanners: 120000
 SCAN_TIMEOUT_MS=60000
-
-# How long a multi-page scan session stays alive before auto-expiring (ms).
-# Default: 1800000 (30 minutes)
-# Sessions that exceed this are purged and their temp files cleaned up.
 SCAN_SESSION_TIMEOUT_MS=1800000
 
-# ─────────────────────────────────────────────────────────────────
-# LINUX / SANE ONLY
-# ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+#  SCANNING — Linux / SANE
+# ═══════════════════════════════════════════════════════════════
 
-# Pin a specific SANE device name.
-# If not set, the service auto-detects: picks first pixma/canon device,
-# then first non-webcam device, then falls back to SANE default.
-#
-# How to find your device name:
-#   scanimage -L
-#
-# Examples:
-#   SANE_DEVICE=pixma:04A92759_01E3B00006EC     ← Canon MF3010
-#   SANE_DEVICE=epson2:libusb:001:005           ← Epson
-#   SANE_DEVICE=hpaio:/net/HP_LaserJet?ip=192.168.1.50  ← HP network
 SANE_DEVICE=pixma:04A92759_01E3B00006EC
-
-# Scan colour mode passed to scanimage.
-# Default: Gray  (faster, smaller file — best for exam documents)
-# Options: Gray | Color | Lineart
-# Check your scanner's supported modes: scanimage --help -d <device>
 SANE_MODE=Gray
-
-# Set to "true" ONLY if your scanner backend does NOT support --resolution.
-# Default: false (--resolution=300 is passed)
-#
-# Canon MF3010 pixma backend DOES support --resolution — leave this false.
-# If you see "scanimage: unrecognized option '--resolution=...'" with a
-# different scanner, set this to true.
 SANE_SKIP_RESOLUTION=false
 
-# ─────────────────────────────────────────────────────────────────
-# WINDOWS ONLY
-# ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+#  SCANNING — Windows / NAPS2
+# ═══════════════════════════════════════════════════════════════
 
-# Full path to NAPS2 CLI executable.
-# Only set this if NAPS2 is installed in a non-default location.
-# Default: C:\Program Files\NAPS2\naps2.console.exe
 NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
+
+# ═══════════════════════════════════════════════════════════════
+#  PRINTING
+# ═══════════════════════════════════════════════════════════════
+
+# Default printer name. Leave empty to use system default.
+# Find your printer name: GET /api/printers or run `lpstat -p`
+PRINTER_NAME=
 ```
 
-### Which variables do you actually need to set?
+### Variable Reference
 
-| Variable | Must set? | When |
-|----------|-----------|------|
-| `PORT` | No | Only if 4545 is already in use |
-| `LOG_LEVEL` | No | Set `debug` for verbose troubleshooting |
-| `SCANS_DIR` | No | Change only if you want PDFs saved elsewhere |
-| `SCAN_TIMEOUT_MS` | No | Increase if scanner is slow or on network |
-| `SCAN_SESSION_TIMEOUT_MS` | No | Increase if multi-page sessions expire too quickly (default 30 min) |
-| `SANE_DEVICE` | **Recommended** | When more than one scanner/webcam is connected |
-| `SANE_MODE` | No | Set `Color` for colour exam documents |
-| `SANE_SKIP_RESOLUTION` | No | Set `true` only if you get "unrecognized option --resolution" |
-| `NAPS2_PATH` | No | Windows only — custom NAPS2 install path |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PORT` | No | `4545` | Service port — do not change |
+| `LOG_LEVEL` | No | `info` | `error`, `warn`, `info`, `http`, `debug` |
+| `SCANS_DIR` | No | `./scans` | Where scanned PDFs are saved |
+| `SCAN_TIMEOUT_MS` | No | `60000` | Max wait for a single scan (ms) |
+| `SCAN_SESSION_TIMEOUT_MS` | No | `1800000` | Multi-page session expiry (ms, default 30 min) |
+| `SANE_DEVICE` | Recommended | auto-detect | Linux: pin a specific scanner device |
+| `SANE_MODE` | No | `Gray` | Scan colour mode: `Gray`, `Color`, `Lineart` |
+| `SANE_SKIP_RESOLUTION` | No | `false` | Set `true` if scanner rejects `--resolution` |
+| `NAPS2_PATH` | No | default path | Windows: custom NAPS2 install location |
+| `PRINTER_NAME` | No | system default | Default printer for print jobs |
 
-### How to get `SANE_DEVICE` (Linux / macOS / Windows)
+---
 
-`SANE_DEVICE` is only used on systems that run SANE (mainly Linux, and macOS if SANE is installed).  
-On Windows, this variable is not used because scanning goes through NAPS2.
+# SCANNING
 
-#### Linux (recommended flow)
+Everything related to document scanning — setup, API, troubleshooting.
+
+---
+
+## Scanner Setup
+
+### How to find your scanner device (Linux)
 
 ```bash
-# 1) List detected devices
+# 1. List detected devices
 scanimage -L
 
-# 2) Example output:
-# device `pixma:04A92759_01E3B00006EC' is a CANON Canon i-SENSYS MF3010
+# 2. Example output:
+# device `v4l:/dev/video0' is a Noname Integrated Camera     ← webcam, skip
+# device `pixma:04A92759_01E3B00006EC' is a CANON MF3010     ← this one
 
-# 3) Use the value between backticks in .env
+# 3. Copy the device name into .env
 # SANE_DEVICE=pixma:04A92759_01E3B00006EC
 ```
 
-#### macOS
+### How to find your scanner (Windows)
 
-By default this project uses `imagesnap` on macOS, so `SANE_DEVICE` is usually not required.
+NAPS2 detects scanners automatically. For a specific scanner, create a NAPS2 profile:
 
-- If you stay with `imagesnap`, list devices using:
+1. Open NAPS2 GUI → **Profiles** → **Add** → select your scanner
+2. Name it (e.g. `CanonMF3010`)
+3. The service uses the default profile automatically
+
+### How to find your scanner (macOS)
 
 ```bash
 imagesnap -l
 ```
 
-- If you install SANE on macOS and want to use SANE-style devices, then:
-
-```bash
-scanimage -L
-```
-
-and set:
-
-```env
-SANE_DEVICE=<value_from_scanimage_-L>
-```
-
-#### Windows
-
-`SANE_DEVICE` is **not applicable** on Windows.
-
-Use NAPS2 instead:
-
-1. Install NAPS2.
-2. Set optional path:
-
-```env
-NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
-```
-
-3. If you need a specific scanner, create a NAPS2 profile and use `--profile` in command logic.
+Set `SANE_DEVICE` only if you install SANE on macOS; otherwise imagesnap handles it.
 
 ---
 
-## API Reference
+## Scan API Reference
 
-### Health check
+### Health Check
 
 ```
-GET http://localhost:4545/api/health
+GET /api/health
 ```
 
 ```json
 {
   "success": true,
   "status": "ok",
-  "service": "Print Scanning Service",
+  "service": "Print Scanning Local Service",
   "platform": "linux",
   "port": 4545,
-  "timestamp": "2026-04-01T07:38:43.000Z"
+  "capabilities": ["scan", "print"]
 }
 ```
 
 ---
 
-### Trigger a scan
+### Single-Page Scan
 
 ```
-GET http://localhost:4545/api/scan?examCode=MATH2026&uniqueId=ROLL123
-GET http://localhost:4545/api/scan?examCode=MATH2026
+GET /api/scan?examCode=MATH2026&uniqueId=ROLL123
 ```
 
-**Query parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `examCode` | string | Yes | — | Exam identifier (folder + filename) |
+| `uniqueId` | string | No | — | Roll number or center ID |
+| `resolution` | number | No | `300` | DPI (72–1200) |
 
-| Parameter | Type | Required | Default | Notes |
-|-----------|------|----------|---------|-------|
-| `uniqueId` | string | No | — | Any identifier printed on the sheet (roll number, center ID, etc.). When omitted the PDF is named `<examCode>_<timestamp>.pdf` |
-| `examCode` | string | Yes | — | Used in PDF filename and folder |
-| `resolution` | number | No | `300` | DPI — 72 to 1200 |
-
-**Success response (with uniqueId):**
+**Success:**
 
 ```json
 {
   "success": true,
   "filename": "ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
-  "filePath": "/path/to/scaning_nodejs/scans/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
+  "filePath": "/path/to/scans/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
   "platform": "linux",
   "device": "pixma:04A92759_01E3B00006EC",
-  "scansDirectory": "/path/to/scaning_nodejs/scans",
   "message": "Document scanned and saved successfully"
-}
-```
-
-**Success response (no uniqueId):**
-
-```json
-{
-  "success": true,
-  "filename": "MATH2026_2026-04-01T07-38-46.pdf",
-  "filePath": "/path/to/scaning_nodejs/scans/MATH2026/MATH2026_2026-04-01T07-38-46.pdf",
-  "platform": "linux",
-  "device": "pixma:04A92759_01E3B00006EC",
-  "scansDirectory": "/path/to/scaning_nodejs/scans",
-  "message": "Document scanned and saved successfully"
-}
-```
-
-> Tip: copy the `device` value from the response directly into `SANE_DEVICE` in `.env` to pin it permanently.
-
-**Error response:**
-
-```json
-{
-  "success": false,
-  "message": "Scanner rejected the scan request (sane_start: Invalid argument). Most common causes: (1) no paper on the flatbed..."
 }
 ```
 
@@ -366,51 +277,21 @@ GET http://localhost:4545/api/scan?examCode=MATH2026
 
 ### Multi-Page Scanning (Session-based)
 
-When a student's answer sheet has multiple pages (e.g., front and back of a paper = 2 pages), use the multi-page session flow to scan all pages one by one and merge them into a single PDF.
-
-**How it works:**
-
-1. Start a session specifying the exam code, total page count, and optionally a `uniqueId`.
-2. For each page, place it on the flatbed and call the "scan page" endpoint.
-3. After all pages are scanned, call "complete" to merge them into one PDF.
-4. If you need to abort, call "cancel" to clean up temp files.
-
-The single-page `GET /api/scan` endpoint is unchanged and fully backward compatible. Use the session endpoints only when `pageCount > 1`.
-
-**Architecture:**
+For multi-page answer sheets. The flow:
 
 ```
-Admin Frontend                    Scanning Service (port 4545)
-     |                                    |
-     |  POST /api/scan/start              |
-     |  { examCode, pageCount: 4,         |
-     |    uniqueId? }                     |
-     |─────────────────────────────────►  |  Creates session, returns sessionId
-     |  ◄──────── { sessionId }           |
-     |                                    |
-     |  [User places page 1 on scanner]   |
-     |  POST /api/scan/page/:sessionId    |
-     |─────────────────────────────────►  |  scanimage → temp PNG #1
-     |  ◄──── { currentPage: 1,           |
-     |          remaining: 3 }            |
-     |                                    |
-     |  ... repeat for pages 2, 3, 4 ...  |
-     |                                    |
-     |  POST /api/scan/complete/:id       |
-     |─────────────────────────────────►  |  convert page1.png page2.png ... → output.pdf
-     |  ◄──── { filename, filePath }      |  Cleans up temp PNGs
+POST /api/scan/start    → get sessionId
+POST /api/scan/page/:id → scan each page (repeat N times)
+POST /api/scan/complete/:id → merge all pages into one PDF
+DELETE /api/scan/session/:id → cancel (optional)
 ```
 
----
-
-#### Start a multi-page scan session
+#### Start Session
 
 ```
-POST http://localhost:4545/api/scan/start
+POST /api/scan/start
 Content-Type: application/json
 ```
-
-**Request body:**
 
 ```json
 {
@@ -421,109 +302,57 @@ Content-Type: application/json
 }
 ```
 
-| Field | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| `examCode` | string | Yes | — | Used in final PDF filename and folder |
-| `pageCount` | number | Yes | — | Total number of pages to scan (1–100) |
-| `uniqueId` | string | No | — | Any identifier (roll number, center ID, etc.). When omitted the PDF is named `<examCode>_<timestamp>.pdf` |
-| `resolution` | number | No | `300` | DPI — 72 to 1200 |
-
-**Success response:**
+**Response:**
 
 ```json
 {
   "success": true,
-  "sessionId": "a1b2c3d4e5f6a1b2c3d4e5f6",
+  "sessionId": "a1b2c3d4e5f6",
   "totalPages": 4,
   "message": "Multi-page scan session started. Scan 4 page(s) one by one."
 }
 ```
 
----
-
-#### Scan a page in the session
-
-Place the next page face-down on the flatbed, then call:
+#### Scan a Page
 
 ```
-POST http://localhost:4545/api/scan/page/:sessionId
+POST /api/scan/page/:sessionId
 ```
 
-No request body needed. The service scans the page and stores the image as a temporary PNG.
-
-**Success response:**
+**Response:**
 
 ```json
 {
   "success": true,
-  "sessionId": "a1b2c3d4e5f6a1b2c3d4e5f6",
   "currentPage": 2,
   "totalPages": 4,
   "remaining": 2,
-  "message": "Page 2 scanned. Place the next page on the scanner and scan again."
+  "message": "Page 2 scanned. Place the next page on the scanner."
 }
 ```
 
-When `remaining` is `0`, all pages are done — call the complete endpoint.
-
-**Error response (e.g., all pages already scanned):**
-
-```json
-{
-  "success": false,
-  "message": "All 4 pages have already been scanned. Call POST /api/scan/complete/<sessionId> to finalize."
-}
-```
-
----
-
-#### Complete the session (merge into PDF)
-
-After all pages are scanned, finalize the session to merge all pages into a single PDF:
+#### Complete Session
 
 ```
-POST http://localhost:4545/api/scan/complete/:sessionId
+POST /api/scan/complete/:sessionId
 ```
 
-The response has the same shape as the single-page `GET /api/scan` endpoint:
-
-**Success response:**
+**Response:**
 
 ```json
 {
   "success": true,
   "filename": "ROLL123_MATH2026_2026-04-09T10-30-00.pdf",
-  "filePath": "/path/to/scans/MATH2026/ROLL123_MATH2026_2026-04-09T10-30-00.pdf",
-  "platform": "linux",
-  "device": "pixma:04A92759_01E3B00006EC",
-  "scansDirectory": "/path/to/scans",
   "totalPages": 4,
-  "message": "Multi-page scan complete. 4 page(s) merged into ROLL123_MATH2026_2026-04-09T10-30-00.pdf"
-
-// Without uniqueId: filename → "MATH2026_2026-04-09T10-30-00.pdf"
+  "message": "Multi-page scan complete. 4 page(s) merged."
 }
 ```
 
-**Error response (not all pages scanned):**
-
-```json
-{
-  "success": false,
-  "message": "Only 2 of 4 pages scanned. Scan the remaining pages or cancel the session."
-}
-```
-
----
-
-#### Cancel a session
-
-If you need to abort a multi-page scan (e.g., wrong uniqueId, scanner jam), cancel the session to clean up temporary files:
+#### Cancel Session
 
 ```
-DELETE http://localhost:4545/api/scan/session/:sessionId
+DELETE /api/scan/session/:sessionId
 ```
-
-**Success response:**
 
 ```json
 {
@@ -532,44 +361,33 @@ DELETE http://localhost:4545/api/scan/session/:sessionId
 }
 ```
 
----
-
-#### Example: Full multi-page scan with curl
+#### Full Multi-Page Example (curl)
 
 ```bash
-# 1. Start a 2-page session (front + back of one paper)
+# 1. Start session
 curl -X POST http://localhost:4545/api/scan/start \
   -H "Content-Type: application/json" \
   -d '{"examCode":"MATH2026","pageCount":2,"uniqueId":"ROLL123"}'
-# → { "sessionId": "abc123...", "totalPages": 2 }
 
-# 2. Place page 1 (front) on scanner, then scan
-curl -X POST http://localhost:4545/api/scan/page/abc123...
-# → { "currentPage": 1, "remaining": 1 }
+# 2. Scan page 1
+curl -X POST http://localhost:4545/api/scan/page/SESSION_ID
 
-# 3. Place page 2 (back) on scanner, then scan
-curl -X POST http://localhost:4545/api/scan/page/abc123...
-# → { "currentPage": 2, "remaining": 0 }
+# 3. Scan page 2
+curl -X POST http://localhost:4545/api/scan/page/SESSION_ID
 
-# 4. Merge into a single PDF
-curl -X POST http://localhost:4545/api/scan/complete/abc123...
-# → { "filename": "ROLL123_MATH2026_2026-04-09T10-30-00.pdf", ... }
-# (without uniqueId → "MATH2026_2026-04-09T10-30-00.pdf")
+# 4. Merge
+curl -X POST http://localhost:4545/api/scan/complete/SESSION_ID
 ```
-
-> **Note:** The admin frontend automates this entire flow. When the user sets "Pages" > 1 and clicks "Scan", the UI walks them through each page with a progress bar and prompts.
 
 ---
 
-### List all exam folders
+### Scanned Documents API
 
-Returns every exam code that has at least one scanned document.
+#### List all exam folders
 
 ```
-GET http://localhost:4545/api/docs
+GET /api/docs
 ```
-
-**Success response:**
 
 ```json
 {
@@ -581,20 +399,331 @@ GET http://localhost:4545/api/docs
 }
 ```
 
+#### List documents for an exam
+
+```
+GET /api/docs/:examCode
+```
+
+```json
+{
+  "success": true,
+  "examCode": "MATH2026",
+  "documents": [
+    {
+      "filename": "ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
+      "size": 1843200,
+      "createdAt": "2026-04-01T07:38:47.000Z",
+      "previewUrl": "http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf"
+    }
+  ]
+}
+```
+
+#### Preview / download a document
+
+```
+GET /api/docs/:examCode/:filename
+```
+
+Returns PDF bytes with `Content-Type: application/pdf`.
+
 ---
 
-### List documents for an exam
-
-Returns all scanned PDFs inside `scans/<examCode>/` with a ready-to-use preview URL for each file.
+### Scan Output Structure
 
 ```
-GET http://localhost:4545/api/docs/:examCode
+scans/
+  MATH2026/
+    ROLL123_MATH2026_2026-04-01T07-38-46.pdf   ← with uniqueId
+    MATH2026_2026-04-01T08-00-00.pdf           ← without uniqueId
+  EXAM2027/
+    EXAM2027_2026-04-02T08-10-00.pdf
 ```
 
-**Example:**
+---
+
+### Scan Troubleshooting
+
+#### "Scanner not found"
+
+```bash
+scanimage -L                           # Check detection
+sudo apt install libsane-extras -y     # Extra SANE backends
+sudo usermod -aG scanner $USER         # Fix permissions (re-login after)
+```
+
+#### "sane_start: Invalid argument"
+
+1. No paper on flatbed — place document and retry
+2. Scanner warming up — wait 10–15 seconds
+3. Wrong mode — check `scanimage --help -d <device>` and update `SANE_MODE`
+
+#### "unrecognized option '--resolution'"
+
+```env
+SANE_SKIP_RESOLUTION=true
+```
+
+#### "convert: not found"
+
+```bash
+sudo apt install imagemagick -y   # Linux
+brew install imagemagick           # macOS
+```
+
+#### Scan times out
+
+```env
+SCAN_TIMEOUT_MS=120000
+```
+
+#### "Session expired"
+
+Sessions live in memory and expire after 30 minutes by default:
+
+```env
+SCAN_SESSION_TIMEOUT_MS=3600000
+```
+
+---
+
+### Supported Scanners
+
+| Scanner | OS | Backend | Status |
+|---------|-----|---------|--------|
+| Canon i-SENSYS MF3010 | Linux | SANE pixma | Tested |
+| Canon CanoScan series | Linux | SANE pixma/plustek | Compatible |
+| Epson scanners | Linux | SANE epson2 | Compatible |
+| HP scanners (USB/network) | Linux | SANE hpaio | Compatible |
+| Any TWAIN/WIA scanner | Windows | NAPS2 | Compatible |
+| Any macOS scanner | macOS | imagesnap | Compatible |
+
+Full SANE list: http://www.sane-project.org/sane-supported-devices.html
+
+---
+
+# PRINTING
+
+Everything related to silent printing — setup, API, troubleshooting.
+
+---
+
+## How Printing Works
 
 ```
-GET http://localhost:4545/api/docs/MATH2026
+Frontend sends HTML → POST /api/print
+                          │
+                          ▼
+              Puppeteer (headless Chromium)
+              renders HTML → generates PDF
+                          │
+                          ▼
+              OS Print Spooler sends PDF to printer
+                Linux/macOS: lp (CUPS)
+                Windows: pdf-to-printer
+                          │
+                          ▼
+              Physical printer outputs the page
+```
+
+The entire process is **silent** — no browser dialog, no user interaction required.
+
+---
+
+## Printer Setup
+
+### Linux (Ubuntu / Debian)
+
+CUPS (Common Unix Printing System) handles all print jobs on Linux.
+
+```bash
+# 1. Install CUPS
+sudo apt install cups -y
+
+# 2. Start and enable CUPS
+sudo systemctl enable --now cups
+
+# 3. Add your user to the lpadmin group (for admin access)
+sudo usermod -aG lpadmin $USER
+# Log out and back in after this
+
+# 4. Open CUPS web interface to add/manage printers
+#    http://localhost:631
+
+# 5. Verify your printer is detected
+lpstat -p -d
+
+# 6. Test a print
+echo "Hello from Print Scanning" | lp
+```
+
+#### Adding a printer via CUPS web UI
+
+1. Open http://localhost:631 in your browser
+2. Click **Administration** → **Add Printer**
+3. Select your printer (USB or network discovered)
+4. Follow the wizard — select the correct driver
+5. Set it as default if desired
+
+#### Adding a network printer (command line)
+
+```bash
+# HP network printer
+lpadmin -p HP-LaserJet -E -v socket://192.168.1.50:9100 -m everywhere
+
+# Set as default
+lpoptions -d HP-LaserJet
+
+# Verify
+lpstat -p -d
+```
+
+#### Common CUPS commands
+
+| Command | Description |
+|---------|-------------|
+| `lpstat -p -d` | List printers and show default |
+| `lpstat -t` | Full printer status |
+| `lp filename.pdf` | Print to default printer |
+| `lp -d PrinterName filename.pdf` | Print to specific printer |
+| `lpq` | Show print queue |
+| `cancel -a` | Cancel all print jobs |
+| `cupsctl --remote-admin` | Enable remote CUPS admin |
+| `sudo systemctl restart cups` | Restart CUPS |
+
+### Windows
+
+No extra setup needed. The service uses `pdf-to-printer` which talks directly to the Windows print spooler.
+
+1. Connect your printer (USB or network)
+2. Ensure it appears in **Settings > Printers & Scanners**
+3. That's it — the service detects it automatically
+
+#### Verify from command line
+
+```powershell
+# List printers
+Get-Printer | Format-Table Name, DriverName, PortName
+
+# Print a test page
+Start-Process -FilePath "rundll32.exe" -ArgumentList "printui.dll,PrintUIEntry /k /n `"Your Printer Name`""
+```
+
+### macOS
+
+CUPS is pre-installed on macOS.
+
+1. Add your printer in **System Preferences > Printers & Scanners**
+2. Click the **+** button to add a new printer
+3. Select your printer from the list
+4. Verify:
+
+```bash
+lpstat -p -d
+```
+
+#### Test print from terminal
+
+```bash
+echo "Hello from Print Scanning" | lp
+```
+
+---
+
+## Setting a Default Printer for the Service
+
+You can set a default printer in two ways:
+
+**Option 1 — Environment variable (persistent)**
+
+```env
+# In .env file
+PRINTER_NAME=Canon-MF3010
+```
+
+**Option 2 — Per-request (override)**
+
+```json
+{
+  "html": "<h1>Hello</h1>",
+  "printerName": "HP-LaserJet-Pro"
+}
+```
+
+The priority order is: `printerName` in request body → `PRINTER_NAME` env → system default.
+
+---
+
+## Print API Reference
+
+### List Available Printers
+
+```
+GET /api/printers
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "printers": ["Canon-MF3010", "HP-LaserJet-Pro", "PDF-Printer"],
+  "default": "Canon-MF3010"
+}
+```
+
+Use the printer name values in the `printerName` field when calling `/api/print`.
+
+---
+
+### Silent Print
+
+```
+POST /api/print
+Content-Type: application/json
+```
+
+**Request body:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `html` | string | Yes* | — | Full HTML document to render and print |
+| `base64Pdf` | string | No | — | Pre-rendered PDF as base64 (skip Puppeteer) |
+| `printerName` | string | No | env/system default | Target printer from `/api/printers` |
+| `printType` | string | No | `"exam"` | `"exam"` or `"omr"` |
+
+*Either `html` or `base64Pdf` must be provided.
+
+**Print types:**
+
+| Type | Margins | Scale | Use case |
+|------|---------|-------|----------|
+| `exam` | 0.25in all sides | 1.0 | Exam papers, multi-page documents |
+| `omr` | 0 (none) | 0.95 | OMR answer sheets, precise layout |
+
+**Example — print an exam:**
+
+```bash
+curl -X POST http://localhost:4545/api/print \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<h1>Test Exam</h1><p>Sample content.</p>","printType":"exam"}'
+```
+
+**Example — print to a specific printer:**
+
+```bash
+curl -X POST http://localhost:4545/api/print \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<h1>Test</h1>","printerName":"HP-LaserJet-Pro","printType":"exam"}'
+```
+
+**Example — print OMR sheet:**
+
+```bash
+curl -X POST http://localhost:4545/api/print \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<div>OMR Sheet Content</div>","printType":"omr"}'
 ```
 
 **Success response:**
@@ -602,103 +731,149 @@ GET http://localhost:4545/api/docs/MATH2026
 ```json
 {
   "success": true,
-  "examCode": "MATH2026",
-  "documentCount": 2,
-  "documents": [
-    {
-      "filename": "ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
-      "size": 1843200,
-      "createdAt": "2026-04-01T07:38:47.000Z",
-      "previewUrl": "http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf"
-    },
-    {
-      "filename": "MATH2026_2026-04-01T07-45-10.pdf",
-      "size": 1920000,
-      "createdAt": "2026-04-01T07:45:11.000Z",
-      "previewUrl": "http://localhost:4545/api/docs/MATH2026/MATH2026_2026-04-01T07-45-10.pdf"
-    }
-  ]
+  "message": "Print job queued successfully",
+  "jobId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
-**Response 404** — no scans exist yet for this exam:
+**Error response:**
 
 ```json
 {
   "success": false,
-  "message": "No scan folder found for exam: MATH2026. No documents have been scanned for this exam yet."
+  "message": "lp: No default destination",
+  "jobId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
 ---
 
-### Preview / download a document
+## Print Troubleshooting
 
-Streams the PDF bytes directly to the browser. Open in a `<a target="_blank">` link or embed in an `<iframe>` — the browser renders it natively using its built-in PDF viewer.
+### "lp: No default destination" (Linux / macOS)
 
-No authentication required. Intended for local network use only.
+No default printer is configured. Fix:
 
-```
-GET http://localhost:4545/api/docs/:examCode/:filename
-```
+```bash
+# List available printers
+lpstat -p
 
-**Example:**
+# Set one as default
+lpoptions -d YourPrinterName
 
-```
-GET http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf
-GET http://localhost:4545/api/docs/MATH2026/MATH2026_2026-04-01T07-38-46.pdf
-```
-
-**Response:** PDF bytes with `Content-Type: application/pdf`
-
-**Response 404** — file not found:
-
-```json
-{
-  "success": false,
-  "message": "Document not found: MATH2026_... in exam MATH2026"
-}
+# Or set in .env
+PRINTER_NAME=YourPrinterName
 ```
 
-> **Security note:** Both the exam code and filename are sanitised on the server to prevent directory traversal. Only `.pdf` files are served.
+### "No printers detected"
+
+**Linux:**
+```bash
+# Is CUPS running?
+sudo systemctl status cups
+
+# Restart CUPS
+sudo systemctl restart cups
+
+# Check USB printer connection
+lsusb | grep -i printer
+```
+
+**Windows:**
+- Open **Settings > Printers & Scanners** and check if the printer is listed
+- Try removing and re-adding the printer
+
+**macOS:**
+- Open **System Preferences > Printers & Scanners**
+- Click the **+** button if no printers are shown
+
+### Print job hangs / nothing comes out
+
+```bash
+# Check CUPS queue for stuck jobs (Linux/macOS)
+lpq
+
+# Cancel all stuck jobs
+cancel -a
+
+# Restart CUPS
+sudo systemctl restart cups
+
+# Check printer status
+lpstat -t
+```
+
+### PDF renders incorrectly (wrong margins, cut off)
+
+- Check you're using the correct `printType` (`exam` vs `omr`)
+- `omr` uses zero margins and 0.95 scale — designed for precise bubble sheets
+- `exam` uses 0.25in margins — standard for text documents
+- Verify your HTML uses absolute units (pt, in, cm) rather than relative (%, vh, vw)
+
+### Puppeteer / Chromium issues
+
+```bash
+# If Chromium didn't download during npm install
+npx puppeteer install chrome
+
+# Linux: install missing shared libraries
+sudo apt install -y libgbm1 libnss3 libatk-bridge2.0-0 libx11-xcb1
+```
+
+### "pdf-to-printer is not a function" (Windows)
+
+```bash
+# Reinstall the package
+npm uninstall pdf-to-printer
+npm install pdf-to-printer
+```
 
 ---
 
-### Document folder structure on disk
+## Dependencies for Printing
 
-When a scan is triggered, the service automatically creates a subfolder named after the exam code:
+| Package | Purpose | Platform |
+|---------|---------|----------|
+| `puppeteer` | Headless Chromium — converts HTML to PDF | All |
+| `pdf-to-printer` | Sends PDF to Windows print spooler | Windows |
+| CUPS (`lp` command) | Sends PDF to printer | Linux, macOS |
 
-```
-scans/
-  MATH2026/
-    ROLL123_MATH2026_2026-04-01T07-38-46.pdf   ← scanned with uniqueId=ROLL123
-    CTR001_MATH2026_2026-04-01T07-45-10.pdf    ← scanned with uniqueId=CTR001 (center ID)
-    MATH2026_2026-04-01T08-00-00.pdf           ← scanned without uniqueId
-  EXAM2027/
-    EXAM2027_2026-04-02T08-10-00.pdf           ← scanned without uniqueId
-```
-
-Each exam's documents are isolated so future exams never mix with previous ones.
+Puppeteer downloads its own Chromium on `npm install` (~300 MB). On subsequent installs it reuses the cached binary.
 
 ---
 
-## Output Files
+# COMMON
 
-**Saved to:** `scans/<examCode>/` subfolder inside this project (or inside `SCANS_DIR` if set)
+Shared information across scanning and printing.
 
-**Filename format:**
+---
 
+## Admin Frontend Integration
+
+The admin frontend (`admin-frontend`) uses a **feature flag** to switch between QZ Tray and this local service:
+
+```env
+# In admin-frontend/.env.local
+REACT_APP_USE_QZ_TRAY=false          # false = use local service, true = use QZ Tray
+REACT_APP_PRINT_SERVICE_URL=http://localhost:4545
 ```
-<uniqueId>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf   ← when uniqueId is provided
-<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf              ← when uniqueId is omitted
-```
 
-**Examples:**
+The adapter pattern (`print-adapter.js`) dynamically loads either `qz-setup.js` or `local-print-service.js` based on this flag. No code changes needed to switch — just flip the env var and restart the React dev server.
 
-```
-ROLL123_MATH2026_2026-04-01T07-38-46.pdf   ← uniqueId = ROLL123 (roll number)
-CTR001_MATH2026_2026-04-01T07-38-46.pdf    ← uniqueId = CTR001  (center ID)
-MATH2026_2026-04-01T07-38-46.pdf           ← no uniqueId
+---
+
+## Service Not Reachable (`Failed to fetch`)
+
+```bash
+# 1. Check if service is running
+curl http://localhost:4545/api/health
+
+# 2. Check port is not blocked
+sudo ufw allow 4545        # Linux
+# Or check Windows Firewall
+
+# 3. Confirm React is using http (not https)
+# REACT_APP_PRINT_SERVICE_URL=http://localhost:4545
 ```
 
 ---
@@ -710,295 +885,76 @@ logs/combined.log   — all levels (info, warn, error, http)
 logs/error.log      — errors only
 ```
 
-Console output is colour-coded. Set `LOG_LEVEL=debug` in `.env` for verbose output.
-
----
-
-## Using a Different Scanner
-
-### Step 1 — List detected scanners
-
-```bash
-scanimage -L
-```
-
-Example output:
-
-```
-device `v4l:/dev/video0' is a Noname Integrated Camera (webcam — skip this)
-device `pixma:04A92759_01E3B00006EC' is a CANON Canon i-SENSYS MF3010
-device `epson2:libusb:001:005' is a Epson GT-X820
-device `hpaio:/net/HP_LaserJet?ip=192.168.1.50' is an HP LaserJet
-```
-
-### Step 2 — Pin your scanner in `.env`
-
-```env
-SANE_DEVICE=epson2:libusb:001:005
-```
-
-### Step 3 — Check what options your scanner supports
-
-```bash
-scanimage --help --device-name="epson2:libusb:001:005"
-```
-
-- `--resolution` listed → leave `SANE_SKIP_RESOLUTION=false`
-- `--resolution` NOT listed → set `SANE_SKIP_RESOLUTION=true`
-- `--mode` listed with values → set `SANE_MODE=Gray` or `SANE_MODE=Color`
-
-### Common scanner backends and device prefixes
-
-| Brand | SANE Backend | Device prefix | Install |
-|-------|-------------|---------------|---------|
-| Canon MF series | pixma | `pixma:` | included in `sane-utils` |
-| Canon CanoScan | plustek / pixma | `plustek:` | included |
-| Epson | epson2 / epsonds | `epson2:` or `epsonds:` | included |
-| HP (USB) | hpaio | `hpaio:` | `sudo apt install hplip` |
-| HP (network) | hpaio | `hpaio:/net/...?ip=...` | `sudo apt install hplip` |
-| Brother | brscan4 | `brother4:` | download from brother.com |
-| Fujitsu (ADF) | fujitsu | `fujitsu:` | included |
-| Generic | varies | varies | `scanimage -L` to find |
-
-### Network scanners (scanner on LAN, not USB)
-
-```bash
-# HP network scanner
-SANE_DEVICE=hpaio:/net/HP_LaserJet_Pro?ip=192.168.1.50
-
-# Canon via AirScan (mDNS)
-sudo apt install sane-airscan
-SANE_DEVICE=airscan:e0:Canon MF3010
-```
-
-### Windows — using a specific scanner with NAPS2
-
-NAPS2 picks the Windows default scanner automatically. To use a named profile:
-
-1. Open NAPS2 GUI → **Profiles** → **Add** → select your scanner → name it (e.g. `CanonMF3010`)
-2. Set in `.env`:
-   ```env
-   NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
-   NAPS2_PROFILE=CanonMF3010
-   ```
-3. Edit `src/services/scanService.js` — Windows command line, add:
-   ```javascript
-   const profileFlag = process.env.NAPS2_PROFILE ? `--profile "${process.env.NAPS2_PROFILE}"` : "";
-   command = `${quoted(NAPS2_PATH)} -o ${quoted(filePath)} --noprofile ${profileFlag}`;
-   ```
-
-### macOS — selecting a specific scanner
-
-```bash
-# List available capture devices
-imagesnap -l
-
-# Test with a specific device
-imagesnap -d "Canon MF3010" /tmp/test.png
-```
-
-Set in `.env`:
-```env
-IMAGESNAP_DEVICE=Canon MF3010
-```
-
-Then edit the darwin branch in `src/services/scanService.js`:
-```javascript
-const deviceFlag = process.env.IMAGESNAP_DEVICE ? `-d "${process.env.IMAGESNAP_DEVICE}"` : "";
-command = `imagesnap ${deviceFlag} ${tmpPng} && ...`;
-```
-
----
-
-## Canon MF3010 — Linux Setup Reference
-
-```bash
-# 1. Install SANE + ImageMagick
-sudo apt install sane-utils imagemagick -y
-
-# 2. Confirm Canon is detected
-scanimage -L
-# Expected line: device `pixma:04A92759_xxxxxxxx' is a CANON Canon i-SENSYS MF3010
-
-# 3. Check USB connection (if not detected)
-lsusb | grep Canon
-# Expected: Bus 001 Device 00x: ID 04a9:176d Canon, Inc. MF3010
-
-# 4. Add user to scanner group (if permission denied)
-sudo usermod -aG scanner $USER
-# Then log out and log back in
-
-# 5. Check all options supported by MF3010
-scanimage --help --device-name="pixma:04A92759_xxxxxxxx"
-
-# 6. Test a manual scan (place paper on flatbed first)
-scanimage --device-name="pixma:04A92759_xxxxxxxx" --mode=Gray --resolution=300 --format=png -o /tmp/test.png
-convert /tmp/test.png /tmp/test.pdf
-ls -lh /tmp/test.pdf
-
-# 7. Pin the device in .env
-echo 'SANE_DEVICE=pixma:04A92759_xxxxxxxx' >> .env
-```
-
----
-
-## Troubleshooting
-
-### "Scanner not found" / "No scanners were identified"
-
-```bash
-# Check scanner is powered on, cable connected, then:
-scanimage -L
-
-# If still not found on Linux:
-sudo apt install libsane-extras -y
-sudo usermod -aG scanner $USER
-# Log out and back in
-```
-
-### "sane_start: Invalid argument"
-
-Most common causes:
-1. **No paper on the flatbed** — place a document and retry
-2. **Scanner warming up** — wait 10–15 seconds and retry
-3. Wrong scan mode for your scanner — run `scanimage --help -d <device>` to see valid `--mode` values and update `SANE_MODE` in `.env`
-
-### "scanimage: unrecognized option '--resolution=...'"
-
-Your scanner backend does not support `--resolution`. Set in `.env`:
-
-```env
-SANE_SKIP_RESOLUTION=true
-```
-
-### "scanimage: unrecognized option '--mode=...'"
-
-Your scanner backend uses a different mode flag. Check:
-
-```bash
-scanimage --help --device-name="your:device"
-```
-
-Then set `SANE_MODE` to a value your scanner lists, or set it empty:
-
-```env
-SANE_MODE=
-```
-
-### "convert: not found" or "magick: not found"
-
-```bash
-sudo apt install imagemagick -y   # Linux
-brew install imagemagick           # macOS
-```
-
-The service tries `convert` first, then `magick` automatically. Both commands come from the same `imagemagick` package.
-
-### "scanimage: command not found"
-
-```bash
-sudo apt install sane-utils -y
-```
-
-### "naps2.console.exe: not found" (Windows)
-
-Install NAPS2 from https://www.naps2.com or set:
-
-```env
-NAPS2_PATH=C:\YourCustomPath\naps2.console.exe
-```
-
-### "imagesnap: command not found" (macOS)
-
-```bash
-brew install imagesnap
-```
-
-### Scan times out
-
-```env
-# Increase timeout to 2 minutes (per page)
-SCAN_TIMEOUT_MS=120000
-```
-
-### "Session not found" / "Session expired"
-
-Multi-page scan sessions are stored in memory and auto-expire after 30 minutes (default). Possible causes:
-
-- The session was already completed or cancelled.
-- The service was restarted during a session (sessions are not persisted to disk).
-- The session timed out — increase the limit:
-
-```env
-SCAN_SESSION_TIMEOUT_MS=3600000
-```
-
-### "Only X of Y pages scanned"
-
-You must scan all declared pages before calling `/api/scan/complete`. If you cannot scan all pages (e.g., paper jam), either:
-
-1. Cancel the session: `DELETE /api/scan/session/:sessionId`
-2. Or scan the remaining pages and then complete.
-
-### Service not reachable from React (`Failed to fetch`)
-
-- Confirm service is running: `curl http://localhost:4545/api/health`
-- Confirm port 4545 is not blocked: `sudo ufw allow 4545` (Linux)
-- Confirm React app is calling `http://localhost:4545` (not https)
-
-### Which scanner is being used? (auto-detection check)
-
-Look at the service logs on startup of a scan:
-
-```
-Detected SANE devices: v4l:/dev/video0, pixma:04A92759_01E3B00006EC
-Auto-selected device: pixma:04A92759_01E3B00006EC
-```
-
-Or check the `device` field in the API success response. Copy it to `SANE_DEVICE=` in `.env` to lock it in permanently.
+Console output is colour-coded. Set `LOG_LEVEL=debug` for verbose output.
 
 ---
 
 ## Project Structure
 
 ```
-scaning_nodejs/
+scaning-nodejs/
 ├── index.js                  Entry point — starts Express on port 4545
-├── package.json              Node.js dependencies
+├── package.json              Dependencies
 ├── start.bat                 Windows startup script
 ├── start.sh                  Linux/macOS startup script
-├── .env                      Environment variables (create this file)
-├── README.md                 This file
+├── .env                      Environment variables
+├── README.md                 This documentation
 ├── scans/                    Scanned PDF output (auto-created)
 ├── logs/                     Winston log files (auto-created)
 │   ├── combined.log
 │   └── error.log
 └── src/
-    ├── app.js                Express app setup (CORS, Morgan, routes)
+    ├── app.js                Express app (CORS, Morgan, route mounting)
+    │
     ├── routes/
-    │   ├── scan.routes.js           GET /api/health   GET /api/scan
-    │   └── scanSession.routes.js    POST /api/scan/start, /page, /complete, DELETE /session
+    │   ├── scan.routes.js           GET  /api/health, GET /api/scan
+    │   ├── scanSession.routes.js    POST /api/scan/start, /page, /complete
+    │   ├── print.routes.js          POST /api/print, GET /api/printers
+    │   ├── docs.routes.js           GET  /api/docs, /api/docs/:exam/:file
+    │   └── documentation.routes.js  GET  / and /documentation (this UI)
+    │
     ├── services/
-    │   ├── scanService.js           OS detection, device auto-detect, exec, multi-page merge
-    │   └── sessionManager.js        In-memory multi-page scan session store + auto-cleanup
+    │   ├── scanService.js           OS detect, scanner command, PNG→PDF
+    │   ├── sessionManager.js        Multi-page scan session store
+    │   ├── printService.js          HTML→PDF (Puppeteer) + silent print
+    │   └── printerService.js        Printer enumeration (CUPS/pdf-to-printer)
+    │
+    ├── templates/
+    │   └── doc.html                 Documentation page template
+    │
     └── utils/
-        ├── logger.js         Winston logger
-        └── fileHandler.js    Output path builder + file validator
+        ├── logger.js                Winston logger
+        └── fileHandler.js           Output path builder + file validator
 ```
 
 ---
 
-## Supported Scanners
+## API Routes Summary
 
-| Scanner | OS | Backend | Status |
-|---------|-----|---------|--------|
-| Canon i-SENSYS MF3010 | Linux | SANE pixma | Tested ✓ |
-| Canon i-SENSYS MF3010 | Windows | NAPS2 | Compatible |
-| Canon CanoScan series | Linux | SANE pixma/plustek | Compatible |
-| Epson scanners | Linux | SANE epson2 | Compatible |
-| HP scanners (USB) | Linux | SANE hpaio | Compatible |
-| HP scanners (network) | Linux | SANE hpaio | Compatible |
-| Any TWAIN/WIA scanner | Windows | NAPS2 | Compatible |
-| Any macOS scanner | macOS | imagesnap | Compatible |
+### Scanning Endpoints
 
-Full SANE device list: http://www.sane-project.org/sane-supported-devices.html
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health` | Service status + capabilities |
+| `GET` | `/api/scan` | Single-page scan |
+| `POST` | `/api/scan/start` | Start multi-page session |
+| `POST` | `/api/scan/page/:id` | Scan one page in session |
+| `POST` | `/api/scan/complete/:id` | Merge pages into PDF |
+| `DELETE` | `/api/scan/session/:id` | Cancel session |
+| `GET` | `/api/docs` | List exam folders |
+| `GET` | `/api/docs/:exam` | List documents for exam |
+| `GET` | `/api/docs/:exam/:file` | Download/preview PDF |
+
+### Printing Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/printers` | List available printers + default |
+| `POST` | `/api/print` | Silent print HTML content |
+
+### Documentation Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Documentation UI |
+| `GET` | `/documentation` | Documentation UI (alias) |
