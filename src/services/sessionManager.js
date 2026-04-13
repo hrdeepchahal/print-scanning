@@ -12,16 +12,16 @@ const sessions = new Map();
 
 /**
  * @typedef {Object} ScanSession
- * @property {string}   id
- * @property {string}   rollNumber
- * @property {string}   examCode
- * @property {number}   resolution
- * @property {number}   totalPages
- * @property {string[]} scannedPages  - absolute paths to temp PNG files
+ * @property {string}        id
+ * @property {string|null}   uniqueId      - Optional identifier (roll number, center ID, etc.)
+ * @property {string}        examCode
+ * @property {number}        resolution
+ * @property {number}        totalPages
+ * @property {string[]}      scannedPages  - absolute paths to temp PNG files
  * @property {"active"|"completing"|"completed"|"cancelled"} status
- * @property {string}   platform
- * @property {string}   device
- * @property {number}   createdAt     - Date.now()
+ * @property {string}        platform
+ * @property {string}        device
+ * @property {number}        createdAt     - Date.now()
  */
 
 function generateId() {
@@ -31,13 +31,13 @@ function generateId() {
 /**
  * Create a new multi-page scan session.
  *
- * @param {{ rollNumber: string, examCode: string, totalPages: number, resolution?: number }} opts
+ * @param {{ uniqueId?: string|null, examCode: string, totalPages: number, resolution?: number }} opts
  * @returns {ScanSession}
  */
-function createSession({ rollNumber, examCode, totalPages, resolution = 300 }) {
+function createSession({ uniqueId = null, examCode, totalPages, resolution = 300 }) {
   const session = {
     id: generateId(),
-    rollNumber,
+    uniqueId,
     examCode,
     resolution,
     totalPages,
@@ -49,7 +49,7 @@ function createSession({ rollNumber, examCode, totalPages, resolution = 300 }) {
   };
   sessions.set(session.id, session);
   logger.info(
-    `Scan session created: ${session.id} — ${totalPages} page(s), roll: ${rollNumber}, exam: ${examCode}`
+    `Scan session created: ${session.id} — ${totalPages} page(s), uniqueId: ${uniqueId || "(none)"}, exam: ${examCode}`
   );
   return session;
 }

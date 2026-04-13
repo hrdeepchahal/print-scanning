@@ -304,22 +304,23 @@ function handleScanError(err, platform, detectedDevice) {
 }
 
 /**
- * Execute a document scan for the given student/exam context (single-page legacy flow).
+ * Execute a document scan for the given exam context (single-page legacy flow).
  *
  * @param {object} options
- * @param {string} options.rollNumber  - Student roll number (used in filename)
- * @param {string} options.examCode    - Exam code (used in filename)
+ * @param {string|null} [options.uniqueId]  - Optional identifier (roll number, center ID, etc.)
+ *                                           When omitted, the PDF is named <examCode>_<timestamp>.pdf
+ * @param {string} options.examCode         - Exam code (used in filename and folder)
  * @param {number} [options.resolution=300] - Scan resolution in DPI
  * @returns {Promise<{ success: boolean, filename: string, filePath: string, platform: string, device?: string }>}
  */
-async function executeScan({ rollNumber, examCode, resolution = 300 }) {
+async function executeScan({ uniqueId = null, examCode, resolution = 300 }) {
   const platform = process.platform;
   logger.info(
-    `Scan requested — platform: ${platform}, rollNumber: ${rollNumber}, ` +
+    `Scan requested — platform: ${platform}, uniqueId: ${uniqueId || "(none)"}, ` +
     `examCode: ${examCode}, resolution: ${resolution}`
   );
 
-  const { filename, filePath } = buildOutputPath(rollNumber, examCode);
+  const { filename, filePath } = buildOutputPath(uniqueId, examCode);
   logger.info(`Output path: ${filePath}`);
 
   let command;

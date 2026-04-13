@@ -30,7 +30,7 @@ http://localhost:4545/api/health   ← Health check JSON
 ```
 React (Admin Frontend / ScanOMRSheets.js)
     |
-    | Single page:  GET /api/scan?rollNumber=ROLL123&examCode=MATH2026
+    | Single page:  GET /api/scan?examCode=MATH2026[&uniqueId=ROLL123]
     | Multi-page:   POST /api/scan/start  →  POST /api/scan/page/:id (×N)  →  POST /api/scan/complete/:id
     v
 Express Server — scaning_nodejs (port 4545)
@@ -50,7 +50,8 @@ Multi-page:  each page → temp PNG in /tmp  →  convert page1.png page2.png ..
 Single-page: scan → temp PNG → output.pdf  (same as before)
     |
     v
-PDF saved to:  scans/<examCode>/<rollNumber>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf
+PDF saved to:  scans/<examCode>/<uniqueId>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf  (uniqueId provided)
+               scans/<examCode>/<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf              (no uniqueId)
     |
     v
 JSON response → { success, filename, filePath, device, platform }
@@ -310,24 +311,39 @@ GET http://localhost:4545/api/health
 ### Trigger a scan
 
 ```
-GET http://localhost:4545/api/scan?rollNumber=ROLL123&examCode=MATH2026
+GET http://localhost:4545/api/scan?examCode=MATH2026&uniqueId=ROLL123
+GET http://localhost:4545/api/scan?examCode=MATH2026
 ```
 
 **Query parameters:**
 
 | Parameter | Type | Required | Default | Notes |
 |-----------|------|----------|---------|-------|
-| `rollNumber` | string | Yes | — | Used in PDF filename |
-| `examCode` | string | Yes | — | Used in PDF filename |
+| `uniqueId` | string | No | — | Any identifier printed on the sheet (roll number, center ID, etc.). When omitted the PDF is named `<examCode>_<timestamp>.pdf` |
+| `examCode` | string | Yes | — | Used in PDF filename and folder |
 | `resolution` | number | No | `300` | DPI — 72 to 1200 |
 
-**Success response:**
+**Success response (with uniqueId):**
 
 ```json
 {
   "success": true,
   "filename": "ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
   "filePath": "/path/to/scaning_nodejs/scans/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf",
+  "platform": "linux",
+  "device": "pixma:04A92759_01E3B00006EC",
+  "scansDirectory": "/path/to/scaning_nodejs/scans",
+  "message": "Document scanned and saved successfully"
+}
+```
+
+**Success response (no uniqueId):**
+
+```json
+{
+  "success": true,
+  "filename": "MATH2026_2026-04-01T07-38-46.pdf",
+  "filePath": "/path/to/scaning_nodejs/scans/MATH2026/MATH2026_2026-04-01T07-38-46.pdf",
   "platform": "linux",
   "device": "pixma:04A92759_01E3B00006EC",
   "scansDirectory": "/path/to/scaning_nodejs/scans",
@@ -354,7 +370,7 @@ When a student's answer sheet has multiple pages (e.g., front and back of a pape
 
 **How it works:**
 
-1. Start a session specifying the roll number, exam code, and total page count.
+1. Start a session specifying the exam code, total page count, and optionally a `uniqueId`.
 2. For each page, place it on the flatbed and call the "scan page" endpoint.
 3. After all pages are scanned, call "complete" to merge them into one PDF.
 4. If you need to abort, call "cancel" to clean up temp files.
@@ -367,8 +383,8 @@ The single-page `GET /api/scan` endpoint is unchanged and fully backward compati
 Admin Frontend                    Scanning Service (port 4545)
      |                                    |
      |  POST /api/scan/start              |
-     |  { rollNumber, examCode,           |
-     |    pageCount: 4 }                  |
+     |  { examCode, pageCount: 4,         |
+     |    uniqueId? }                     |
      |─────────────────────────────────►  |  Creates session, returns sessionId
      |  ◄──────── { sessionId }           |
      |                                    |
@@ -398,18 +414,18 @@ Content-Type: application/json
 
 ```json
 {
-  "rollNumber": "ROLL123",
   "examCode": "MATH2026",
   "pageCount": 4,
+  "uniqueId": "ROLL123",
   "resolution": 300
 }
 ```
 
 | Field | Type | Required | Default | Notes |
 |-------|------|----------|---------|-------|
-| `rollNumber` | string | Yes | — | Used in final PDF filename |
 | `examCode` | string | Yes | — | Used in final PDF filename and folder |
 | `pageCount` | number | Yes | — | Total number of pages to scan (1–100) |
+| `uniqueId` | string | No | — | Any identifier (roll number, center ID, etc.). When omitted the PDF is named `<examCode>_<timestamp>.pdf` |
 | `resolution` | number | No | `300` | DPI — 72 to 1200 |
 
 **Success response:**
@@ -483,6 +499,8 @@ The response has the same shape as the single-page `GET /api/scan` endpoint:
   "scansDirectory": "/path/to/scans",
   "totalPages": 4,
   "message": "Multi-page scan complete. 4 page(s) merged into ROLL123_MATH2026_2026-04-09T10-30-00.pdf"
+
+// Without uniqueId: filename → "MATH2026_2026-04-09T10-30-00.pdf"
 }
 ```
 
@@ -499,7 +517,7 @@ The response has the same shape as the single-page `GET /api/scan` endpoint:
 
 #### Cancel a session
 
-If you need to abort a multi-page scan (e.g., wrong roll number, scanner jam), cancel the session to clean up temporary files:
+If you need to abort a multi-page scan (e.g., wrong uniqueId, scanner jam), cancel the session to clean up temporary files:
 
 ```
 DELETE http://localhost:4545/api/scan/session/:sessionId
@@ -522,7 +540,7 @@ DELETE http://localhost:4545/api/scan/session/:sessionId
 # 1. Start a 2-page session (front + back of one paper)
 curl -X POST http://localhost:4545/api/scan/start \
   -H "Content-Type: application/json" \
-  -d '{"rollNumber":"ROLL123","examCode":"MATH2026","pageCount":2}'
+  -d '{"examCode":"MATH2026","pageCount":2,"uniqueId":"ROLL123"}'
 # → { "sessionId": "abc123...", "totalPages": 2 }
 
 # 2. Place page 1 (front) on scanner, then scan
@@ -536,6 +554,7 @@ curl -X POST http://localhost:4545/api/scan/page/abc123...
 # 4. Merge into a single PDF
 curl -X POST http://localhost:4545/api/scan/complete/abc123...
 # → { "filename": "ROLL123_MATH2026_2026-04-09T10-30-00.pdf", ... }
+# (without uniqueId → "MATH2026_2026-04-09T10-30-00.pdf")
 ```
 
 > **Note:** The admin frontend automates this entire flow. When the user sets "Pages" > 1 and clicks "Scan", the UI walks them through each page with a progress bar and prompts.
@@ -593,10 +612,10 @@ GET http://localhost:4545/api/docs/MATH2026
       "previewUrl": "http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf"
     },
     {
-      "filename": "ROLL456_MATH2026_2026-04-01T07-45-10.pdf",
+      "filename": "MATH2026_2026-04-01T07-45-10.pdf",
       "size": 1920000,
       "createdAt": "2026-04-01T07:45:11.000Z",
-      "previewUrl": "http://localhost:4545/api/docs/MATH2026/ROLL456_MATH2026_2026-04-01T07-45-10.pdf"
+      "previewUrl": "http://localhost:4545/api/docs/MATH2026/MATH2026_2026-04-01T07-45-10.pdf"
     }
   ]
 }
@@ -627,6 +646,7 @@ GET http://localhost:4545/api/docs/:examCode/:filename
 
 ```
 GET http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46.pdf
+GET http://localhost:4545/api/docs/MATH2026/MATH2026_2026-04-01T07-38-46.pdf
 ```
 
 **Response:** PDF bytes with `Content-Type: application/pdf`
@@ -636,7 +656,7 @@ GET http://localhost:4545/api/docs/MATH2026/ROLL123_MATH2026_2026-04-01T07-38-46
 ```json
 {
   "success": false,
-  "message": "Document not found: ROLL123_MATH2026_... in exam MATH2026"
+  "message": "Document not found: MATH2026_... in exam MATH2026"
 }
 ```
 
@@ -651,10 +671,11 @@ When a scan is triggered, the service automatically creates a subfolder named af
 ```
 scans/
   MATH2026/
-    ROLL123_MATH2026_2026-04-01T07-38-46.pdf
-    ROLL456_MATH2026_2026-04-01T07-45-10.pdf
+    ROLL123_MATH2026_2026-04-01T07-38-46.pdf   ← scanned with uniqueId=ROLL123
+    CTR001_MATH2026_2026-04-01T07-45-10.pdf    ← scanned with uniqueId=CTR001 (center ID)
+    MATH2026_2026-04-01T08-00-00.pdf           ← scanned without uniqueId
   EXAM2027/
-    ROLL789_EXAM2027_2026-04-02T08-10-00.pdf
+    EXAM2027_2026-04-02T08-10-00.pdf           ← scanned without uniqueId
 ```
 
 Each exam's documents are isolated so future exams never mix with previous ones.
@@ -668,13 +689,16 @@ Each exam's documents are isolated so future exams never mix with previous ones.
 **Filename format:**
 
 ```
-<rollNumber>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf
+<uniqueId>_<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf   ← when uniqueId is provided
+<examCode>_<YYYY-MM-DDTHH-MM-SS>.pdf              ← when uniqueId is omitted
 ```
 
-**Example:**
+**Examples:**
 
 ```
-ROLL123_MATH2026_2026-04-01T07-38-46.pdf
+ROLL123_MATH2026_2026-04-01T07-38-46.pdf   ← uniqueId = ROLL123 (roll number)
+CTR001_MATH2026_2026-04-01T07-38-46.pdf    ← uniqueId = CTR001  (center ID)
+MATH2026_2026-04-01T07-38-46.pdf           ← no uniqueId
 ```
 
 ---

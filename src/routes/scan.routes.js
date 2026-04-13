@@ -24,8 +24,9 @@ router.get("/health", (req, res) => {
  * GET /api/scan
  *
  * Query parameters:
- *   rollNumber  {string}  required — student roll number (used in filename)
- *   examCode    {string}  required — exam code (used in filename)
+ *   uniqueId    {string}  optional — identifier printed on the sheet (roll number, center ID, etc.)
+ *                         When omitted, the PDF is named <examCode>_<timestamp>.pdf
+ *   examCode    {string}  required — exam code (used in filename and folder)
  *   resolution  {number}  optional — scan DPI, defaults to 300
  *
  * Response (200):
@@ -35,15 +36,7 @@ router.get("/health", (req, res) => {
  *   { success: false, message }
  */
 router.get("/scan", async (req, res) => {
-  const { rollNumber, examCode, resolution } = req.query;
-
-  // Validate required parameters
-  if (!rollNumber || !rollNumber.trim()) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required query parameter: rollNumber",
-    });
-  }
+  const { uniqueId, examCode, resolution } = req.query;
 
   if (!examCode || !examCode.trim()) {
     return res.status(400).json({
@@ -60,11 +53,12 @@ router.get("/scan", async (req, res) => {
     });
   }
 
-  logger.info(`Scan request received — rollNumber: ${rollNumber.trim()}, examCode: ${examCode.trim()}, resolution: ${dpi}`);
+  const uid = uniqueId && uniqueId.trim() ? uniqueId.trim() : null;
+  logger.info(`Scan request received — uniqueId: ${uid || "(none)"}, examCode: ${examCode.trim()}, resolution: ${dpi}`);
 
   try {
     const result = await executeScan({
-      rollNumber: rollNumber.trim(),
+      uniqueId: uid,
       examCode: examCode.trim(),
       resolution: dpi,
     });

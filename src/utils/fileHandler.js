@@ -29,14 +29,15 @@ function sanitize(str) {
 
 /**
  * Build the output file path for a scanned PDF.
- * PDFs are now saved inside a per-exam subfolder:
- *   scans/<examCode>/<rollNumber>_<examCode>_<timestamp>.pdf
+ * PDFs are saved inside a per-exam subfolder:
+ *   scans/<examCode>/<uniqueId>_<examCode>_<timestamp>.pdf  (when uniqueId provided)
+ *   scans/<examCode>/<examCode>_<timestamp>.pdf             (when uniqueId omitted)
  *
- * @param {string} rollNumber
+ * @param {string|null|undefined} uniqueId - Optional identifier (roll number, center ID, etc.)
  * @param {string} examCode
  * @returns {{ filename: string, filePath: string, examDir: string }}
  */
-function buildOutputPath(rollNumber, examCode) {
+function buildOutputPath(uniqueId, examCode) {
   ensureScansDirectory();
 
   const safeExam = sanitize(examCode);
@@ -48,7 +49,8 @@ function buildOutputPath(rollNumber, examCode) {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const filename = `${sanitize(rollNumber)}_${safeExam}_${timestamp}.pdf`;
+  const prefix = uniqueId && String(uniqueId).trim() ? `${sanitize(String(uniqueId).trim())}_` : "";
+  const filename = `${prefix}${safeExam}_${timestamp}.pdf`;
   const filePath = path.join(examDir, filename);
 
   return { filename, filePath, examDir };

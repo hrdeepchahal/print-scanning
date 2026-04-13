@@ -21,15 +21,13 @@ const router = express.Router();
  *
  * Begin a multi-page scan session.
  *
- * Body: { rollNumber, examCode, pageCount, resolution? }
+ * Body: { uniqueId?, examCode, pageCount, resolution? }
+ *   uniqueId   optional — identifier (roll number, center ID, etc.)
  * Response: { success, sessionId, totalPages }
  */
 router.post("/scan/start", (req, res) => {
-  const { rollNumber, examCode, pageCount, resolution } = req.body;
+  const { uniqueId, examCode, pageCount, resolution } = req.body;
 
-  if (!rollNumber || !String(rollNumber).trim()) {
-    return res.status(400).json({ success: false, message: "Missing required field: rollNumber" });
-  }
   if (!examCode || !String(examCode).trim()) {
     return res.status(400).json({ success: false, message: "Missing required field: examCode" });
   }
@@ -47,8 +45,10 @@ router.post("/scan/start", (req, res) => {
     return res.status(400).json({ success: false, message: "resolution must be between 72 and 1200 DPI" });
   }
 
+  const uid = uniqueId && String(uniqueId).trim() ? String(uniqueId).trim() : null;
+
   const session = createSession({
-    rollNumber: String(rollNumber).trim(),
+    uniqueId: uid,
     examCode: String(examCode).trim(),
     totalPages: pages,
     resolution: dpi,
@@ -186,7 +186,7 @@ router.post("/scan/complete/:sessionId", async (req, res) => {
   session.status = "completing";
 
   try {
-    const { filename, filePath } = buildOutputPath(session.rollNumber, session.examCode);
+    const { filename, filePath } = buildOutputPath(session.uniqueId, session.examCode);
 
     await combinePagesToPdf(session.scannedPages, filePath);
 
