@@ -11,6 +11,27 @@ const NAPS2_PATH =
   process.env.NAPS2_PATH ||
   "C:\\Program Files\\NAPS2\\naps2.console.exe";
 
+// Global to hold the detected ImageMagick command (magick for v7, convert for v6)
+let IM_COMMAND = "convert";
+
+/**
+ * Detect available ImageMagick command at startup.
+ */
+function detectImageMagick() {
+  exec("magick -version", (error) => {
+    if (!error) {
+      IM_COMMAND = "magick";
+      logger.info("ImageMagick 7+ detected, using 'magick' command.");
+    } else {
+      IM_COMMAND = "convert";
+      logger.info("ImageMagick 6 or older detected, using 'convert' command.");
+    }
+  });
+}
+
+// Kick off detection
+detectImageMagick();
+
 /**
  * Wrap child_process.exec in a Promise with a configurable timeout.
  *
@@ -121,7 +142,8 @@ async function detectLinuxDevice() {
 function imgToPdfCmd(src, dest) {
   const quality = parseInt(process.env.SCAN_QUALITY) || 82;
   const flags = `-compress jpeg -quality ${quality}`;
-  return `(convert ${flags} ${src} ${dest} 2>/dev/null || magick ${flags} ${src} ${dest})`;
+  // Use the detected command. Don't hide errors so we can catch policy issues.
+  return `${IM_COMMAND} ${flags} ${src} ${dest}`;
 }
 
 /**
@@ -234,7 +256,7 @@ async function combinePagesToPdf(pngPaths, outputPdfPath) {
   const sources = pngPaths.map((p) => quoted(p)).join(" ");
   const dest = quoted(outputPdfPath);
 
-  const cmd = `(convert ${flags} ${sources} ${dest} 2>/dev/null || magick ${flags} ${sources} ${dest})`;
+  const cmd = `${IM_COMMAND} ${flags} ${sources} ${dest}`;
   logger.info(`Combining ${pngPaths.length} pages into PDF: ${outputPdfPath}`);
 
   await execAsync(cmd);
@@ -277,6 +299,16 @@ function handleScanError(err, platform, detectedDevice) {
     );
   }
   if (
+    msg.includes("not authorized") ||
+    (msg.includes("policy") && (msg.includes("pdf") || msg.includes("coder")))
+  ) {
+    throw new Error(
+      "ImageMagick security policy is blocking PDF conversion. " +
+      "Run this command to fix it: sudo sed -i 's/rights=\"none\" pattern=\"PDF\"/rights=\"read|write\" pattern=\"PDF\"/' /etc/ImageMagick-6/policy.xml"
+    );
+  }
+
+  if (
     msg.includes("command not found") ||
     msg.includes("no such file") ||
     (msg.includes("not found") && !msg.includes("scanner"))
@@ -289,7 +321,7 @@ function handleScanError(err, platform, detectedDevice) {
     }
     if (platform === "linux") {
       throw new Error(
-        "scanimage or ImageMagick not found. " +
+        `scanimage or ImageMagick (${IM_COMMAND}) not found. ` +
         "Install: sudo apt install sane-utils imagemagick"
       );
     }
