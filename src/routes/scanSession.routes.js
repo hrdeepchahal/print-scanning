@@ -2,7 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const logger = require("../utils/logger");
 const {
-  detectLinuxDevice,
+  detectLinuxDeviceForced,
   spawnBatchProcess,
   waitForBatchReady,
   triggerNextBatchPage,
@@ -55,7 +55,7 @@ router.post("/scan/start", async (req, res) => {
   // stdin before scanning each page.
   if (process.platform === "linux" || process.platform === "darwin") {
     try {
-      const device = await detectLinuxDevice();
+      const device = await detectLinuxDeviceForced();
       session.device = device;
 
       const { child, pngPaths } = spawnBatchProcess({
@@ -135,7 +135,7 @@ router.post("/scan/page/:sessionId", async (req, res) => {
       // The device is already open. Just signal the next page via stdin and
       // wait for the file. No device re-open, no airscan index lookup.
       const pngPath = session.batchPngPaths[pageNumber - 1];
-      await triggerNextBatchPage(session.batchProcess, pngPath, session.resolution);
+      await triggerNextBatchPage(session.batchProcess, pngPath);
 
       if (!fs.existsSync(pngPath) || fs.statSync(pngPath).size === 0) {
         throw new Error("Scan completed but image file is missing or empty. Ensure document is on the flatbed.");
