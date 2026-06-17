@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const logger = require("../utils/logger");
+const { killBatchProcess } = require("./scanService");
 
 const SESSION_TIMEOUT_MS =
   parseInt(process.env.SCAN_SESSION_TIMEOUT_MS) || 30 * 60 * 1000; // 30 min
@@ -13,15 +14,17 @@ const sessions = new Map();
 /**
  * @typedef {Object} ScanSession
  * @property {string}        id
- * @property {string|null}   uniqueId      - Optional identifier (roll number, center ID, etc.)
+ * @property {string|null}   uniqueId
  * @property {string}        examCode
  * @property {number}        resolution
  * @property {number}        totalPages
- * @property {string[]}      scannedPages  - absolute paths to temp PNG files
+ * @property {string[]}      scannedPages   - absolute paths to temp PNG files
+ * @property {string[]}      batchPngPaths  - pre-computed PNG paths for the batch process
+ * @property {import("child_process").ChildProcess|null} batchProcess - persistent scanimage process
  * @property {"active"|"completing"|"completed"|"cancelled"} status
  * @property {string}        platform
  * @property {string}        device
- * @property {number}        createdAt     - Date.now()
+ * @property {number}        createdAt
  */
 
 function generateId() {
@@ -42,6 +45,8 @@ function createSession({ uniqueId = null, examCode, totalPages, resolution = 300
     resolution,
     totalPages,
     scannedPages: [],
+    batchPngPaths: [],
+    batchProcess: null,
     status: "active",
     platform: process.platform,
     device: "",
@@ -63,11 +68,19 @@ function getSession(id) {
 }
 
 /**
- * Remove temp PNG files associated with a session.
+ * Remove temp PNG files and kill the batch process for a session.
  * @param {ScanSession} session
  */
 function cleanupTempFiles(session) {
-  for (const filePath of session.scannedPages) {
+  // Kill the persistent batch process first so it releases file handles
+  if (session.batchProcess) {
+    killBatchProcess(session.batchProcess);
+    session.batchProcess = null;
+  }
+
+  // Clean up all temp PNGs — both already-scanned pages and pre-computed paths
+  const allPaths = new Set([...session.scannedPages, ...session.batchPngPaths]);
+  for (const filePath of allPaths) {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
