@@ -69,6 +69,16 @@ async function detectLinuxDeviceForced() {
     const allDevices = stdout.split("\n").filter((l) => l.includes("device `")).map(extractName).filter(Boolean);
     logger.info(`Detected SANE devices: ${allDevices.join(", ")}`);
 
+    const pinned = process.env.SANE_DEVICE?.trim();
+    if (pinned) {
+      const matched = matchPinnedDevice(allDevices, pinned);
+      if (matched) {
+        logger.info(`Matched SANE_DEVICE "${pinned}" → ${matched}`);
+        return matched;
+      }
+      logger.warn(`SANE_DEVICE "${pinned}" not found in scanimage -L output`);
+    }
+
     const preferred = allDevices.find((d) => d.startsWith("pixma:") || d.toLowerCase().includes("canon"));
     if (preferred) { logger.info(`Auto-selected device: ${preferred}`); return preferred; }
 
@@ -93,6 +103,34 @@ function buildSaneFlags(device, resolution) {
   const resolutionFlag = process.env.SANE_SKIP_RESOLUTION === "true" ? "" : `--resolution=${resolution}`;
   const modeFlag = `--mode=${process.env.SANE_MODE || "Gray"}`;
   return { deviceFlag, modeFlag, resolutionFlag };
+}
+
+/** argv array for child: no shell quoting — each flag/value is a separate element. */
+function buildSaneArgs(device, resolution) {
+  const mode = process.env.SANE_MODE || "Gray";
+  const args = [];
+  if (device) args.push("--device-name", device);
+  args.push("--mode", mode);
+  if (process.env.SANE_SKIP_RESOLUTION !== "true") args.push("--resolution", String(resolution));
+  return args;
+}
+
+/** Match SANE_DEVICE env against scanimage -L output (handles index shifts and partial names). */
+function matchPinnedDevice(allDevices, pinned) {
+  if (!pinned) return null;
+  const exact = allDevices.find((d) => d === pinned);
+  if (exact) return exact;
+  const prefix = allDevices.find((d) => d.startsWith(pinned));
+  if (prefix) return prefix;
+  const modelMatch = pinned.match(/^airscan:e\d+:(.+)$/i);
+  if (modelMatch) {
+    const model = modelMatch[1].toLowerCase();
+    return allDevices.find((d) => {
+      const m = d.match(/^airscan:e\d+:(.+)$/i);
+      return m && m[1].toLowerCase().startsWith(model);
+    });
+  }
+  return null;
 }
 
 function buildLinuxScanCommand(device, outputPath, resolution) {
@@ -127,22 +165,18 @@ function buildLinuxScanCommand(device, outputPath, resolution) {
  * @returns {{ child: ChildProcess, pngPaths: string[] }}
  */
 function spawnBatchProcess({ device, sessionId, pageCount, resolution }) {
-  const { deviceFlag, modeFlag, resolutionFlag } = buildSaneFlags(device, resolution);
-
   // scanimage uses %d for page number in --batch pattern
   const pngPattern = path.join("/tmp", `eduscan_${sessionId}_%03d.png`);
 
   const args = [
-    ...(deviceFlag ? [deviceFlag] : []),
-    modeFlag,
-    ...(resolutionFlag ? [resolutionFlag] : []),
-    "--format=png",
+    ...buildSaneArgs(device, resolution),
+    "--format", "png",
     `--batch=${pngPattern}`,
     `--batch-count=${pageCount}`,
     "--batch-prompt",
-  ].filter(Boolean);
+  ];
 
-  logger.info(`Spawning batch process: scanimage ${args.join(" ")}`);
+  logger.info(`Spawning batch process: scanimage ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}`);
 
   const child = spawn("scanimage", args, { stdio: ["pipe", "pipe", "pipe"] });
 
@@ -172,6 +206,7 @@ function waitForBatchReady(child) {
   return new Promise((resolve, reject) => {
     const READY_TIMEOUT_MS = 10000;
     let settled = false;
+    let lastStderr = "";
 
     const settle = (err) => {
       if (settled) return;
@@ -182,9 +217,11 @@ function waitForBatchReady(child) {
     };
 
     const onData = (data) => {
-      const text = data.toString().toLowerCase();
+      const text = data.toString();
+      lastStderr = (lastStderr + text).trim();
+      const lower = text.toLowerCase();
       // scanimage prints "press <return>" or "press return" when ready
-      if (text.includes("return") || text.includes("continue") || text.includes("place")) {
+      if (lower.includes("return") || lower.includes("continue") || lower.includes("place")) {
         settle(null);
       }
     };
@@ -192,7 +229,8 @@ function waitForBatchReady(child) {
     child.stderr.on("data", onData);
 
     child.once("close", (code) => {
-      settle(new Error(`Batch scan process exited immediately (code ${code}). Check scanner connection and device name.`));
+      const detail = lastStderr || "Check scanner connection and device name.";
+      settle(new Error(`Batch scan process exited immediately (code ${code}). ${detail}`));
     });
 
     // Fallback: if no prompt received within timeout, assume ready anyway
@@ -405,6 +443,7 @@ async function executeScan({ uniqueId = null, examCode, resolution = 300 }) {
 module.exports = {
   executeScan,
   detectLinuxDevice,
+  detectLinuxDeviceForced,
   scanSinglePage,
   combinePagesToPdf,
   spawnBatchProcess,
