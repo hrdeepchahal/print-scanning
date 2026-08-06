@@ -179,6 +179,7 @@ PRINTER_NAME=
 | `SCANS_DIR` | No | `./scans` | Where scanned PDFs are saved |
 | `SCAN_TIMEOUT_MS` | No | `60000` | Max wait for a single scan (ms) |
 | `SCAN_SESSION_TIMEOUT_MS` | No | `1800000` | Multi-page session expiry (ms, default 30 min) |
+| `ADF_PAGE_TIMEOUT_MS` | No | `15000` | Per-page timeout budget for `POST /api/scan/auto/start` (ADF batch scan job) |
 | `SANE_DEVICE` | Recommended | auto-detect | Linux: pin a specific scanner device |
 | `SANE_MODE` | No | `Gray` | Scan colour mode: `Gray`, `Color`, `Lineart` |
 | `SANE_SKIP_RESOLUTION` | No | `false` | Set `true` if scanner rejects `--resolution` |
@@ -378,6 +379,103 @@ curl -X POST http://localhost:4545/api/scan/page/SESSION_ID
 # 4. Merge
 curl -X POST http://localhost:4545/api/scan/complete/SESSION_ID
 ```
+
+---
+
+### Automatic Multi-Page Scan (ADF)
+
+For scanners with an automatic document feeder (ADF) — such as the Canon MAXIFY GX4070. Load every page into the feeder tray, start the job once with the page count, and the feeder pulls and scans each page back-to-back with no per-page prompt.
+
+This is a **background job**, not a single blocking call — for a large `pageCount` (e.g. 50 pages), waiting on one HTTP request until every page finishes would leave the caller with no feedback for minutes. Instead: start the job, then poll its status to drive a live "N of M scanned" counter and, for `outputMode: "separate"`, watch each page's PDF appear as soon as it's converted (via `GET /api/docs/:examCode` — no waiting for the whole batch).
+
+#### Start the job
+
+```
+POST /api/scan/auto/start
+Content-Type: application/json
+```
+
+```json
+{
+  "examCode": "MATH2026",
+  "uniqueId": "ROLL123",
+  "pageCount": 50,
+  "resolution": 300,
+  "outputMode": "separate"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `examCode` | string | Yes | — | Exam identifier (folder + filename) |
+| `uniqueId` | string | No | — | Roll number or center ID |
+| `pageCount` | number | Yes | — | Number of pages loaded in the feeder (1–100) |
+| `resolution` | number | No | `300` | DPI (72–1200) |
+| `outputMode` | string | No | `"separate"` | `"separate"` — one PDF per page, appears as each page finishes. `"merged"` — one PDF, only appears once the whole job completes. Not supported on Windows. |
+
+**Response (returns immediately, before any page is scanned):**
+
+```json
+{ "success": true, "jobId": "a1b2c3d4e5f6", "totalPages": 50, "message": "Automatic scan started — scanning 50 page(s) from the feeder." }
+```
+
+#### Poll for progress
+
+```
+GET /api/scan/auto/:jobId
+```
+
+Poll this every 1–2 seconds while `status` is `"scanning"`.
+
+```json
+{
+  "success": true,
+  "jobId": "a1b2c3d4e5f6",
+  "status": "scanning",
+  "mode": "separate",
+  "totalPages": 50,
+  "scannedCount": 12,
+  "files": [
+    { "page": 1, "filename": "ROLL123_MATH2026_p01of50_2026-04-01T07-38-46.pdf", "filePath": "..." },
+    { "page": 2, "filename": "ROLL123_MATH2026_p02of50_2026-04-01T07-38-46.pdf", "filePath": "..." }
+  ],
+  "warning": null,
+  "error": null,
+  "message": null
+}
+```
+
+`status` is one of:
+
+| Status | Meaning |
+|--------|---------|
+| `scanning` | In progress. `scannedCount` climbs as pages are pulled from the feeder. |
+| `completed` | Done. `files` holds every page (separate mode) or the one merged file (merged mode). `warning` is set if fewer pages were scanned than requested (feeder ran out). |
+| `failed` | No usable pages were produced. See `error`. |
+| `cancelled` | Stopped via `DELETE`. Pages already converted (separate mode) stay on disk. |
+
+#### Cancel a job
+
+```
+DELETE /api/scan/auto/:jobId
+```
+
+Kills the in-progress scanner process. For `outputMode: "separate"`, pages already converted to their own PDF before cancelling are kept. For `"merged"`, nothing is written until the very end, so cancelling loses the pages scanned so far.
+
+```bash
+# Start
+curl -X POST http://localhost:4545/api/scan/auto/start \
+  -H "Content-Type: application/json" \
+  -d '{"examCode":"MATH2026","uniqueId":"ROLL123","pageCount":50,"outputMode":"separate"}'
+
+# Poll (repeat until status is "completed"/"failed"/"cancelled")
+curl http://localhost:4545/api/scan/auto/JOB_ID
+
+# Cancel
+curl -X DELETE http://localhost:4545/api/scan/auto/JOB_ID
+```
+
+A UI for this — enter exam code, unique ID, page count, pick separate/merged, and watch a live progress bar — is built into the **Scanned Documents Explorer** panel on the documentation page (`http://localhost:4545/`, Scanning tab).
 
 ---
 
@@ -909,6 +1007,7 @@ scaning-nodejs/
     ├── routes/
     │   ├── scan.routes.js           GET  /api/health, GET /api/scan
     │   ├── scanSession.routes.js    POST /api/scan/start, /page, /complete
+    │   ├── scanAuto.routes.js       POST /api/scan/auto/start, GET|DELETE /api/scan/auto/:jobId
     │   ├── print.routes.js          POST /api/print, GET /api/printers
     │   ├── docs.routes.js           GET  /api/docs, /api/docs/:exam/:file
     │   └── documentation.routes.js  GET  / and /documentation (this UI)
@@ -916,6 +1015,7 @@ scaning-nodejs/
     ├── services/
     │   ├── scanService.js           OS detect, scanner command, PNG→PDF
     │   ├── sessionManager.js        Multi-page scan session store
+    │   ├── autoScanJobManager.js    Background ADF job store (progress polling)
     │   ├── printService.js          HTML→PDF (Puppeteer) + silent print
     │   └── printerService.js        Printer enumeration (CUPS/pdf-to-printer)
     │
@@ -941,6 +1041,9 @@ scaning-nodejs/
 | `POST` | `/api/scan/page/:id` | Scan one page in session |
 | `POST` | `/api/scan/complete/:id` | Merge pages into PDF |
 | `DELETE` | `/api/scan/session/:id` | Cancel session |
+| `POST` | `/api/scan/auto/start` | Start an automatic ADF multi-page scan job (background, returns immediately) |
+| `GET` | `/api/scan/auto/:jobId` | Poll job progress — scannedCount, files as they land, final status |
+| `DELETE` | `/api/scan/auto/:jobId` | Cancel a running automatic scan job |
 | `GET` | `/api/docs` | List exam folders |
 | `GET` | `/api/docs/:exam` | List documents for exam |
 | `GET` | `/api/docs/:exam/:file` | Download/preview PDF |

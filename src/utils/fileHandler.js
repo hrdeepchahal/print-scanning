@@ -28,16 +28,11 @@ function sanitize(str) {
 }
 
 /**
- * Build the output file path for a scanned PDF.
- * PDFs are saved inside a per-exam subfolder:
- *   scans/<examCode>/<uniqueId>_<examCode>_<timestamp>.pdf  (when uniqueId provided)
- *   scans/<examCode>/<examCode>_<timestamp>.pdf             (when uniqueId omitted)
- *
- * @param {string|null|undefined} uniqueId - Optional identifier (roll number, center ID, etc.)
+ * Ensure the per-exam subfolder exists and return its sanitised name + path.
  * @param {string} examCode
- * @returns {{ filename: string, filePath: string, examDir: string }}
+ * @returns {{ safeExam: string, examDir: string }}
  */
-function buildOutputPath(uniqueId, examCode) {
+function ensureExamDir(examCode) {
   ensureScansDirectory();
 
   const safeExam = sanitize(examCode);
@@ -48,12 +43,50 @@ function buildOutputPath(uniqueId, examCode) {
     logger.info(`Created exam folder: ${examDir}`);
   }
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return { safeExam, examDir };
+}
+
+/** @returns {string} filesystem-safe timestamp, e.g. 2026-04-01T07-38-46 */
+function makeTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+/**
+ * Build the output file path for a scanned PDF.
+ * PDFs are saved inside a per-exam subfolder:
+ *   scans/<examCode>/<uniqueId>_<examCode>_<timestamp>.pdf  (when uniqueId provided)
+ *   scans/<examCode>/<examCode>_<timestamp>.pdf             (when uniqueId omitted)
+ *
+ * @param {string|null|undefined} uniqueId - Optional identifier (roll number, center ID, etc.)
+ * @param {string} examCode
+ * @param {string} [timestamp] - Pass a shared timestamp to group related files (e.g. per-page scans)
+ * @returns {{ filename: string, filePath: string, examDir: string }}
+ */
+function buildOutputPath(uniqueId, examCode, timestamp = makeTimestamp()) {
+  const { safeExam, examDir } = ensureExamDir(examCode);
   const prefix = uniqueId && String(uniqueId).trim() ? `${sanitize(String(uniqueId).trim())}_` : "";
   const filename = `${prefix}${safeExam}_${timestamp}.pdf`;
-  const filePath = path.join(examDir, filename);
+  return { filename, filePath: path.join(examDir, filename), examDir };
+}
 
-  return { filename, filePath, examDir };
+/**
+ * Build the output file path for a single page of a multi-page scan, saved as
+ * its own PDF rather than merged with the others:
+ *   scans/<examCode>/<uniqueId>_<examCode>_p01of4_<timestamp>.pdf
+ *
+ * @param {string|null|undefined} uniqueId
+ * @param {string} examCode
+ * @param {number} pageNumber - 1-based
+ * @param {number} totalPages
+ * @param {string} [timestamp] - Pass a shared timestamp so all pages of one job sort together
+ * @returns {{ filename: string, filePath: string, examDir: string }}
+ */
+function buildPageOutputPath(uniqueId, examCode, pageNumber, totalPages, timestamp = makeTimestamp()) {
+  const { safeExam, examDir } = ensureExamDir(examCode);
+  const prefix = uniqueId && String(uniqueId).trim() ? `${sanitize(String(uniqueId).trim())}_` : "";
+  const pageTag = `p${String(pageNumber).padStart(2, "0")}of${totalPages}`;
+  const filename = `${prefix}${safeExam}_${pageTag}_${timestamp}.pdf`;
+  return { filename, filePath: path.join(examDir, filename), examDir };
 }
 
 /**
@@ -165,7 +198,9 @@ function deleteDocuments(examCode, filenames) {
 
 module.exports = {
   ensureScansDirectory,
+  makeTimestamp,
   buildOutputPath,
+  buildPageOutputPath,
   validateOutputFile,
   listExamFolders,
   listDocsForExam,

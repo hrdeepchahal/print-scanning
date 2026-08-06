@@ -369,6 +369,12 @@ async function combinePagesToPdf(pngPaths, outputPdfPath) {
   await execAsync(cmd);
 }
 
+/** Convert a single scanned PNG into its own standalone PDF (no merge). */
+async function convertPngToPdf(pngPath, outputPdfPath) {
+  const quoted = (p) => `"${p}"`;
+  await execAsync(imgToPdfCmd(quoted(pngPath), quoted(outputPdfPath)));
+}
+
 function handleScanError(err, platform, detectedDevice) {
   logger.error(`Scan command failed: ${err.message}`);
   const msg = err.message.toLowerCase();
@@ -444,8 +450,10 @@ module.exports = {
   executeScan,
   detectLinuxDevice,
   detectLinuxDeviceForced,
+  buildSaneArgs,
   scanSinglePage,
   combinePagesToPdf,
+  convertPngToPdf,
   spawnBatchProcess,
   waitForBatchReady,
   triggerNextBatchPage,

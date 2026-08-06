@@ -83,6 +83,45 @@ if [ ! -d "node_modules" ]; then
   echo ""
 fi
 
+# ── Free the port if something is already using it ──────────────────────────
+PORT=4545
+
+find_port_pids() {
+  if command -v lsof &>/dev/null; then
+    lsof -ti tcp:"$PORT" 2>/dev/null || true
+  elif command -v fuser &>/dev/null; then
+    fuser "$PORT"/tcp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true
+  else
+    echo ""
+  fi
+}
+
+EXISTING_PIDS="$(find_port_pids)"
+
+if [ -n "$EXISTING_PIDS" ]; then
+  echo "[WARN] Port $PORT is already in use (PID: $(echo "$EXISTING_PIDS" | tr '\n' ' ')). Stopping it..."
+  kill $EXISTING_PIDS 2>/dev/null || true
+
+  for _ in 1 2 3 4 5; do
+    sleep 1
+    EXISTING_PIDS="$(find_port_pids)"
+    [ -z "$EXISTING_PIDS" ] && break
+  done
+
+  if [ -n "$EXISTING_PIDS" ]; then
+    echo "[WARN] Still running after 5s — forcing kill (PID: $(echo "$EXISTING_PIDS" | tr '\n' ' '))."
+    kill -9 $EXISTING_PIDS 2>/dev/null || true
+    sleep 1
+  fi
+
+  echo "[OK] Port $PORT is free."
+  echo ""
+elif ! command -v lsof &>/dev/null && ! command -v fuser &>/dev/null; then
+  echo "[WARN] Neither lsof nor fuser is available — cannot check if port $PORT is busy."
+  echo "       If startup fails with EADDRINUSE, stop the other process manually."
+  echo ""
+fi
+
 # ── Start the service ────────────────────────────────────────────────────────
 echo "[INFO] Starting scanning service on port 4545..."
 echo "[INFO] Press Ctrl+C to stop."
