@@ -28,3 +28,14 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# AI assistant directories
+.claude/
+.cursor/
+
+# Credentials / keys
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
