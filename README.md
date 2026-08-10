@@ -1,6 +1,6 @@
 # Print Scanning — Local Service
 
-Cross-platform **scanning** and **silent printing** backend for Print Scanning.  
+Cross-platform **scanning** and **silent printing** backend.  
 Runs on **Linux**, **Windows**, and **macOS**. Tested with Canon i-SENSYS MF3010.
 
 **Port:** `4545` (fixed, never change)  

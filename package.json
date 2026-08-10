@@ -1,7 +1,7 @@
 {
   "name": "scaning_nodejs",
   "version": "1.0.0",
-  "description": "Cross-platform document scanning service for Print Scanning",
+  "description": "Cross-platform document scanning service",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

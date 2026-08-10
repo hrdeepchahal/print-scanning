@@ -1,5 +1,5 @@
 @echo off
-title Print Scanning - Scanning Service
+title Print Scanning Service
 
 echo ============================================
 echo   Print Scanning Service (port 4545)
