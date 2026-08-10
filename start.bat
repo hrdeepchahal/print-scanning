@@ -6,17 +6,40 @@ echo   Print Scanning Service (port 4545)
 echo ============================================
 echo.
 
-:: Check if Node.js is installed
+:: Check if Node.js is installed, auto-install via winget if missing
 where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Node.js is not installed.
+    echo [WARN] Node.js is not installed. Attempting to install it automatically...
     echo.
-    echo Please download and install Node.js from:
-    echo   https://nodejs.org
+
+    where winget >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo [ERROR] winget is not available, cannot auto-install.
+        echo.
+        echo Please download and install Node.js from:
+        echo   https://nodejs.org
+        echo.
+        echo Recommended version: Node.js 18 LTS or higher.
+        pause
+        exit /b 1
+    )
+
+    echo [INFO] Installing latest Node.js LTS via winget...
+    winget install OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
+
+    :: PATH may not refresh in this session; fall back to the default install location
+    set "PATH=%PATH%;%ProgramFiles%\nodejs"
+
+    where node >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo [ERROR] Node.js installation failed or requires a new terminal session.
+        echo Close this window, open a new Command Prompt, and run start.bat again.
+        pause
+        exit /b 1
+    )
+
     echo.
-    echo Recommended version: Node.js 18 LTS or higher.
-    pause
-    exit /b 1
+    echo [OK] Node.js installed successfully.
 )
 
 :: Display Node.js version for debugging

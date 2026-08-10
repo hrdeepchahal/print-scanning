@@ -7,16 +7,44 @@ echo "  Print Scanning Service (port 4545)"
 echo "============================================"
 echo ""
 
-# ── Node.js check ────────────────────────────────────────────────────────────
+# ── Node.js check / auto-install ─────────────────────────────────────────────
 if ! command -v node &>/dev/null; then
-  echo "[ERROR] Node.js is not installed."
+  echo "[WARN] Node.js is not installed. Attempting to install it automatically..."
   echo ""
-  echo "Install options:"
-  echo "  Ubuntu/Debian : sudo apt install nodejs npm"
-  echo "  macOS (Homebrew): brew install node"
-  echo "  Or download from: https://nodejs.org"
+
+  OS="$(uname -s)"
+
+  if [ "$OS" = "Linux" ] && command -v apt-get &>/dev/null; then
+    echo "[INFO] Detected Ubuntu/Debian — installing latest Node.js LTS via NodeSource..."
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+
+  elif [ "$OS" = "Darwin" ]; then
+    echo "[INFO] Detected macOS — installing latest Node.js via Homebrew..."
+    if ! command -v brew &>/dev/null; then
+      echo "[ERROR] Homebrew is not installed. Install it first: https://brew.sh"
+      exit 1
+    fi
+    brew install node
+
+  else
+    echo "[ERROR] Don't know how to auto-install Node.js on this OS ($OS)."
+    echo ""
+    echo "Install options:"
+    echo "  Ubuntu/Debian   : sudo apt install nodejs npm"
+    echo "  macOS (Homebrew): brew install node"
+    echo "  Or download from: https://nodejs.org"
+    echo ""
+    exit 1
+  fi
+
+  if ! command -v node &>/dev/null; then
+    echo "[ERROR] Node.js installation failed. Install it manually from https://nodejs.org"
+    exit 1
+  fi
+
   echo ""
-  exit 1
+  echo "[OK] Node.js installed successfully."
 fi
 
 NODE_VERSION=$(node --version)
