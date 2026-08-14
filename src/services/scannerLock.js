@@ -14,6 +14,10 @@ const logger = require("../utils/logger");
  */
 let _holder = null; // { label, since } | null
 
+// Shared by every route that responds 503 when the lock is held, so the
+// header value and the JSON body's retryAfterSeconds field never drift apart.
+const RETRY_AFTER_SECONDS = 5;
+
 function acquireScannerLock(label) {
   if (_holder) {
     logger.warn(
@@ -34,4 +38,4 @@ function releaseScannerLock(label) {
   }
 }
 
-module.exports = { acquireScannerLock, releaseScannerLock };
+module.exports = { acquireScannerLock, releaseScannerLock, RETRY_AFTER_SECONDS };

@@ -2,6 +2,7 @@ const express = require("express");
 const logger = require("../utils/logger");
 const { detectLinuxDeviceForced } = require("../services/scanService");
 const { createJob, getJob, cancelJob } = require("../services/autoScanJobManager");
+const { RETRY_AFTER_SECONDS } = require("../services/scannerLock");
 const { SCANS_DIR } = require("../utils/fileHandler");
 
 const router = express.Router();
@@ -80,9 +81,10 @@ router.post("/scan/auto/start", async (req, res) => {
   const job = createJob({ device, platform, examCode: exam, uniqueId: uid, pageCount: pages, resolution: dpi, outputMode: mode, timeoutMs });
 
   if (!job) {
-    return res.status(503).set("Retry-After", "5").json({
+    return res.status(503).set("Retry-After", String(RETRY_AFTER_SECONDS)).json({
       success: false,
-      message: "Scanner is busy with another scan session. Retry in 5 seconds.",
+      message: `Scanner is busy with another scan session. Retry in ${RETRY_AFTER_SECONDS} seconds.`,
+      retryAfterSeconds: RETRY_AFTER_SECONDS,
     });
   }
 

@@ -13,7 +13,7 @@ const {
   AIRSCAN_RETRY_DELAY_MS,
 } = require("../services/scanService");
 const { createSession, getSession, removeSession } = require("../services/sessionManager");
-const { acquireScannerLock, releaseScannerLock } = require("../services/scannerLock");
+const { acquireScannerLock, releaseScannerLock, RETRY_AFTER_SECONDS } = require("../services/scannerLock");
 const { buildOutputPath, validateOutputFile, SCANS_DIR } = require("../utils/fileHandler");
 
 const router = express.Router();
@@ -61,9 +61,10 @@ router.post("/scan/start", async (req, res) => {
   if (process.platform === "linux" || process.platform === "darwin") {
     if (!acquireScannerLock(session.id)) {
       removeSession(session.id, true);
-      return res.status(503).set("Retry-After", "5").json({
+      return res.status(503).set("Retry-After", String(RETRY_AFTER_SECONDS)).json({
         success: false,
-        message: "Scanner is busy with another scan session. Retry in 5 seconds.",
+        message: `Scanner is busy with another scan session. Retry in ${RETRY_AFTER_SECONDS} seconds.`,
+        retryAfterSeconds: RETRY_AFTER_SECONDS,
       });
     }
 
@@ -178,9 +179,10 @@ router.post("/scan/page/:sessionId", async (req, res) => {
       // closed fresh within this one request, so the lock is acquired and
       // released within this same request instead of spanning the session.
       if (!acquireScannerLock(sessionId)) {
-        return res.status(503).set("Retry-After", "5").json({
+        return res.status(503).set("Retry-After", String(RETRY_AFTER_SECONDS)).json({
           success: false,
-          message: "Scanner is busy with another scan job. Retry in 5 seconds.",
+          message: `Scanner is busy with another scan job. Retry in ${RETRY_AFTER_SECONDS} seconds.`,
+          retryAfterSeconds: RETRY_AFTER_SECONDS,
         });
       }
       try {
