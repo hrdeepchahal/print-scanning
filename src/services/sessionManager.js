@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const fs = require("fs");
 const logger = require("../utils/logger");
 const { killBatchProcess } = require("./scanService");
+const { releaseScannerLock } = require("./scannerLock");
+const { createOpenIndex } = require("./crashRecovery");
 
 const SESSION_TIMEOUT_MS =
   parseInt(process.env.SCAN_SESSION_TIMEOUT_MS) || 30 * 60 * 1000; // 30 min
@@ -10,6 +12,11 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 
 /** @type {Map<string, ScanSession>} */
 const sessions = new Map();
+
+// Crash/restart recovery — see crashRecovery.js for why this is cleanup-only
+// and never resumes a session.
+const sessionIndex = createOpenIndex(".sessions-open.json", (id) => `eduscan_${id}_`);
+sessionIndex.recoverOrphaned();
 
 /**
  * @typedef {Object} ScanSession
@@ -53,6 +60,7 @@ function createSession({ uniqueId = null, examCode, totalPages, resolution = 300
     createdAt: Date.now(),
   };
   sessions.set(session.id, session);
+  sessionIndex.markOpen(session.id);
   logger.info(
     `Scan session created: ${session.id} — ${totalPages} page(s), uniqueId: ${uniqueId || "(none)"}, exam: ${examCode}`
   );
@@ -78,6 +86,10 @@ function cleanupTempFiles(session) {
     session.batchProcess = null;
   }
 
+  // Release the scanner mutex acquired at /scan/start. No-op if this session
+  // never held it (e.g. Windows sessions, which lock per-page instead).
+  releaseScannerLock(session.id);
+
   // Clean up all temp PNGs — both already-scanned pages and pre-computed paths
   const allPaths = new Set([...session.scannedPages, ...session.batchPngPaths]);
   for (const filePath of allPaths) {
@@ -102,6 +114,7 @@ function removeSession(id, cleanup = true) {
   if (!session) return;
   if (cleanup) cleanupTempFiles(session);
   sessions.delete(id);
+  sessionIndex.markClosed(id);
   logger.info(`Session removed: ${id}`);
 }
 

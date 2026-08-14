@@ -1,5 +1,6 @@
 const express = require("express");
 const { executeScan } = require("../services/scanService");
+const { acquireScannerLock, releaseScannerLock } = require("../services/scannerLock");
 const logger = require("../utils/logger");
 const { SCANS_DIR } = require("../utils/fileHandler");
 
@@ -57,6 +58,13 @@ router.get("/scan", async (req, res) => {
   const uid = uniqueId && uniqueId.trim() ? uniqueId.trim() : null;
   logger.info(`Scan request received — uniqueId: ${uid || "(none)"}, examCode: ${examCode.trim()}, resolution: ${dpi}`);
 
+  if (!acquireScannerLock("legacy-scan")) {
+    return res.status(503).set("Retry-After", "5").json({
+      success: false,
+      message: "Scanner is busy with another scan session. Retry in 5 seconds.",
+    });
+  }
+
   try {
     const result = await executeScan({
       uniqueId: uid,
@@ -87,6 +95,8 @@ router.get("/scan", async (req, res) => {
       success: false,
       message: err.message,
     });
+  } finally {
+    releaseScannerLock("legacy-scan");
   }
 });
 

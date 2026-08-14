@@ -4,9 +4,28 @@ const path = require("path");
 const util = require("util");
 const exec = util.promisify(require("child_process").exec);
 const { v4: uuidv4 } = require("uuid");
+const puppeteer = require("puppeteer");
 const logger = require("../utils/logger");
 
 const TEMP_DIR = path.join(os.tmpdir(), "print-scanning");
+
+/*
+ * Printed HTML embeds logos two ways depending on caller: OMR sheets pass the
+ * branding storage's raw https:// URL, while the question-paper flow inlines it
+ * as a data: URI on purpose (exam halls have no internet — see exam-ops's
+ * useCenterLogoDataUri). Both must stay allowed; only file:// (local disk read
+ * via untrusted HTML) is blocked. No print template uses <script>, so script
+ * execution is disabled outright as defense-in-depth.
+ */
+const PRINT_CSP =
+  "default-src 'none'; style-src 'unsafe-inline'; img-src https: data: blob:; font-src data:; script-src 'none'; object-src 'none'; frame-src 'none'; connect-src 'none';";
+
+function injectPrintCsp(html) {
+  const cspTag = `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">`;
+  return /<head[^>]*>/i.test(html)
+    ? html.replace(/<head[^>]*>/i, (match) => `${match}${cspTag}`)
+    : `${cspTag}${html}`;
+}
 
 const PDF_CONFIGS = {
   /* Margins come from CSS @page inside the HTML (same as browser print preview). */
@@ -24,9 +43,70 @@ const PDF_CONFIGS = {
   },
 };
 
+/*
+ * How long / how thoroughly to wait for page.setContent() before rendering.
+ * exam HTML inlines its logo as a data: URI (self-contained, see
+ * useCenterLogoDataUri) so it's fully ready at domcontentloaded. omr HTML
+ * references the branding storage's https:// logo URL, so it needs to wait
+ * for that request to actually finish — networkidle0 (0 active connections)
+ * is needlessly conservative and can stall up to 30s on any stray connection;
+ * networkidle2 (<=2 active connections) is enough for a single image fetch.
+ */
+const CONTENT_LOAD_CONFIGS = {
+  exam: { waitUntil: "domcontentloaded", timeout: 15000 },
+  omr: { waitUntil: "networkidle2", timeout: 20000 },
+};
+
 function ensureTempDir() {
   if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
+  }
+}
+
+let _browser = null;
+let _launching = null;
+
+/**
+ * Get the shared Puppeteer browser instance, launching it on first use
+ * (or after a crash) and reusing it on every subsequent call.
+ */
+async function getBrowser() {
+  if (_browser) {
+    try {
+      await _browser.version();
+      return _browser;
+    } catch {
+      _browser = null;
+    }
+  }
+
+  if (_launching) return _launching;
+
+  _launching = puppeteer
+    .launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
+    })
+    .then((browser) => {
+      _browser = browser;
+      _launching = null;
+      return browser;
+    })
+    .catch((err) => {
+      _launching = null;
+      throw err;
+    });
+
+  return _launching;
+}
+
+/**
+ * Close the shared Puppeteer browser, if running. Call on process shutdown.
+ */
+async function closeBrowser() {
+  if (_browser) {
+    await _browser.close();
+    _browser = null;
   }
 }
 
@@ -41,23 +121,28 @@ async function convertHtmlToPdf(html, printType = "exam") {
 
   const pdfPath = path.join(TEMP_DIR, `print_${uuidv4()}.pdf`);
   const config = PDF_CONFIGS[printType] || PDF_CONFIGS.exam;
+  const loadConfig = CONTENT_LOAD_CONFIGS[printType] || CONTENT_LOAD_CONFIGS.exam;
 
-  let browser;
+  const browser = await getBrowser();
+  const page = await browser.newPage();
   try {
-    const puppeteer = require("puppeteer");
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (request.url().toLowerCase().startsWith("file://")) {
+        logger.warn(`Blocked file:// request from print HTML: ${request.url()}`);
+        request.abort();
+      } else {
+        request.continue();
+      }
     });
 
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.setContent(injectPrintCsp(html), { waitUntil: loadConfig.waitUntil, timeout: loadConfig.timeout });
     await page.pdf({ path: pdfPath, ...config });
 
     logger.info(`PDF generated: ${pdfPath} (type: ${printType})`);
     return pdfPath;
   } finally {
-    if (browser) await browser.close();
+    await page.close();
   }
 }
 
@@ -119,4 +204,5 @@ module.exports = {
   convertHtmlToPdf,
   printPdf,
   cleanupTempPdf,
+  closeBrowser,
 };

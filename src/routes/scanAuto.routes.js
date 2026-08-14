@@ -37,7 +37,7 @@ function serializeJob(job) {
 //   outputMode: "separate" (default — one PDF per page, appears as each page
 //   finishes) | "merged" (one PDF, only appears once the whole job completes)
 //
-// Response 200: { success, jobId, totalPages, message }
+// Response 200: { success, jobId, totalPages, estimatedSeconds, message }
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/scan/auto/start", async (req, res) => {
   const { examCode, uniqueId, pageCount, resolution, outputMode } = req.body;
@@ -79,12 +79,20 @@ router.post("/scan/auto/start", async (req, res) => {
   const timeoutMs = Math.max(ADF_BASE_TIMEOUT_MS, pages * ADF_PAGE_TIMEOUT_MS);
   const job = createJob({ device, platform, examCode: exam, uniqueId: uid, pageCount: pages, resolution: dpi, outputMode: mode, timeoutMs });
 
+  if (!job) {
+    return res.status(503).set("Retry-After", "5").json({
+      success: false,
+      message: "Scanner is busy with another scan session. Retry in 5 seconds.",
+    });
+  }
+
   logger.info(`Auto scan job ${job.id} started — exam: ${exam}, pages: ${pages}, mode: ${mode}, platform: ${platform}`);
 
   return res.json({
     success: true,
     jobId: job.id,
     totalPages: pages,
+    estimatedSeconds: pages * (ADF_PAGE_TIMEOUT_MS / 1000),
     message: `Automatic scan started — scanning ${pages} page(s) from the feeder.`,
   });
 });

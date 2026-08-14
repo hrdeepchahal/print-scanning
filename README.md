@@ -44,7 +44,7 @@ Admin Frontend (React)
 Express Server — scaning-nodejs (port 4545)
     │
     ├─ Scanning Pipeline:
-    │   OS Detection → Scanner Command → PNG → ImageMagick → PDF → scans/<examCode>/
+    │   OS Detection → Scanner Command → PNG → sharp + pdf-lib → PDF → scans/<examCode>/
     │
     └─ Printing Pipeline:
         HTML → Puppeteer (headless Chromium) → PDF → OS Print Spooler → Physical Printer
@@ -62,15 +62,16 @@ Express Server — scaning-nodejs (port 4545)
 
 ```bash
 sudo apt update
-sudo apt install sane-utils imagemagick cups -y
+sudo apt install sane-utils cups -y
 sudo systemctl enable --now cups
 ```
 
 | Package | Used for |
 |---------|----------|
 | `sane-utils` | Scanner access via `scanimage` |
-| `imagemagick` | PNG → PDF conversion (`convert` / `magick`) |
 | `cups` | Print spooler — the `lp` command sends jobs to printers |
+
+PNG → PDF conversion is handled in-process by the `sharp` and `pdf-lib` npm packages (installed via `npm install`, no OS package needed) — see [PDF Generation: Why No ImageMagick](#pdf-generation-why-no-imagemagick).
 
 ### Windows
 
@@ -81,7 +82,7 @@ sudo systemctl enable --now cups
 ### macOS
 
 ```bash
-brew install imagesnap imagemagick
+brew install imagesnap
 ```
 
 CUPS is pre-installed on macOS. Add your printer in **System Preferences > Printers & Scanners**.
@@ -541,6 +542,25 @@ scans/
 
 ---
 
+## PDF Generation: Why No ImageMagick
+
+Earlier versions of this service shelled out to ImageMagick (`convert`/`magick`) to turn scanned PNGs into PDFs. That approach was replaced with in-process Node libraries. Background, for anyone wondering why there's no `imagemagick` install step above:
+
+**The problem.** ImageMagick ships with a `policy.xml` security policy that, on Ubuntu/Debian by default, blocks PDF read/write entirely (`rights="none" pattern="PDF"`). Every scan on a fresh install hit this and failed with a cryptic "not authorized" error — common enough that `handleScanError` in `scanService.js` had a dedicated branch just to explain the fix (editing `/etc/ImageMagick-6/policy.xml`). On top of that, spawning the `convert`/`magick` CLI per page added 2-4 seconds of process-launch and encode overhead — noticeable on a 10+ page scan.
+
+**Why not `img2pdf` (Python)?** It solves the policy.xml problem (no ImageMagick involved) and is fast, but it's a Python CLI tool — this team doesn't use Python anywhere else, so adding a `pip install` step and a Python runtime dependency to a Node-only service wasn't worth it just to avoid a different CLI dependency.
+
+**What it uses now.** Two npm packages, both installed via the normal `npm install` — no OS packages, no external CLI, no Python:
+
+- [`sharp`](https://sharp.pixelplumbing.com/) — recompresses each scanned PNG to JPEG at the same quality ImageMagick used to apply (`SCAN_QUALITY`, default `82`). Ships prebuilt native binaries for Linux/macOS/Windows, so there's nothing to compile.
+- [`pdf-lib`](https://pdf-lib.js.org/) — pure JavaScript, embeds each JPEG page into a PDF document and writes it to disk.
+
+Both run in-process (no subprocess spawn), so there's no policy.xml to hit and no per-page CLI startup cost. Output contract is unchanged — same `SCAN_QUALITY`-controlled JPEG compression, same PDF landing at the same path — so nothing downstream (routes, job manager, frontend) needed to change.
+
+See `docs/pdf-generation-migration.html` for the full file-by-file breakdown of this change.
+
+---
+
 ### Scan Troubleshooting
 
 #### "Scanner not found"
@@ -561,13 +581,6 @@ sudo usermod -aG scanner $USER         # Fix permissions (re-login after)
 
 ```env
 SANE_SKIP_RESOLUTION=true
-```
-
-#### "convert: not found"
-
-```bash
-sudo apt install imagemagick -y   # Linux
-brew install imagemagick           # macOS
 ```
 
 #### Scan times out

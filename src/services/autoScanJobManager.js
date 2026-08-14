@@ -4,7 +4,17 @@ const path = require("path");
 const { spawn } = require("child_process");
 const logger = require("../utils/logger");
 const { buildOutputPath, buildPageOutputPath, makeTimestamp } = require("../utils/fileHandler");
-const { buildSaneArgs, convertPngToPdf, combinePagesToPdf, scanSinglePage } = require("./scanService");
+const {
+  buildSaneArgs,
+  convertPngToPdf,
+  combinePagesToPdf,
+  scanSinglePage,
+  checkPageDimensions,
+  invalidateDeviceCache,
+  isDeviceOpenFailure,
+} = require("./scanService");
+const { acquireScannerLock, releaseScannerLock } = require("./scannerLock");
+const { createOpenIndex } = require("./crashRecovery");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Background job runner for POST /api/scan/auto/start.
@@ -22,6 +32,11 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 /** @type {Map<string, object>} */
 const jobs = new Map();
+
+// Crash/restart recovery — see crashRecovery.js for why this is cleanup-only
+// and never resumes a job.
+const jobIndex = createOpenIndex(".jobs-open.json", (id) => `eduscan_auto_${id}_`);
+jobIndex.recoverOrphaned();
 
 function generateId() {
   return crypto.randomBytes(8).toString("hex");
@@ -45,6 +60,7 @@ function cleanupPaths(paths) {
  *
  * @param {{ device: string, platform: string, examCode: string, uniqueId: string|null,
  *           pageCount: number, resolution: number, outputMode: "separate"|"merged", timeoutMs: number }} opts
+ * @returns {object|null} the new job, or null if the scanner is already in use by another job/session
  */
 function createJob({ device, platform, examCode, uniqueId, pageCount, resolution, outputMode, timeoutMs }) {
   const job = {
@@ -68,16 +84,27 @@ function createJob({ device, platform, examCode, uniqueId, pageCount, resolution
     createdAt: Date.now(),
     _pendingPngPaths: [],
   };
+
+  // Held for the job's entire background runtime (not just this call) —
+  // released in the .finally() below once the runner actually finishes.
+  if (!acquireScannerLock(job.id)) return null;
+
   jobs.set(job.id, job);
+  jobIndex.markOpen(job.id);
 
   const runner = platform === "win32" ? runWindowsJob : runLinuxJob;
-  runner(job, timeoutMs).catch((err) => {
-    logger.error(`Auto scan job ${job.id} crashed: ${err.message}`);
-    if (job.status === "scanning") {
-      job.status = "failed";
-      job.error = err.message;
-    }
-  });
+  runner(job, timeoutMs)
+    .catch((err) => {
+      logger.error(`Auto scan job ${job.id} crashed: ${err.message}`);
+      if (job.status === "scanning") {
+        job.status = "failed";
+        job.error = err.message;
+      }
+    })
+    .finally(() => {
+      releaseScannerLock(job.id);
+      jobIndex.markClosed(job.id);
+    });
 
   return job;
 }
@@ -227,6 +254,7 @@ async function runWindowsJob(job) {
 
 async function handlePageScanned(job, pageNumber, pngPath) {
   job.scannedCount = pageNumber;
+  await checkPageDimensions(pngPath, job.resolution);
 
   if (job.outputMode === "merged") {
     job._pendingPngPaths.push(pngPath);
@@ -252,6 +280,7 @@ async function finalize(job, scannedCount, stderrTail, timedOutAfterMs) {
 
   if (scannedCount === 0) {
     job.status = "failed";
+    if (isDeviceOpenFailure(stderrTail)) invalidateDeviceCache();
     job.error = timedOutAfterMs
       ? `ADF scan timed out after ${timedOutAfterMs / 1000}s without scanning any pages.`
       : stderrTail || "ADF scan process exited without producing any pages. Ensure documents are loaded in the feeder.";

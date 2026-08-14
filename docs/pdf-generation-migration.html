@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>P-05: PNG→PDF Migration Off ImageMagick</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f7f9;
+    --text: #1a1d23;
+    --text-dim: #52585f;
+    --border: #e2e5e9;
+    --accent: #b3261e;
+    --accent-good: #1e7a3e;
+    --code-bg: #1a1d23;
+    --code-text: #e8eaed;
+    --link: #1a56db;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  header {
+    border-bottom: 3px solid var(--text);
+    padding-bottom: 20px;
+    margin-bottom: 36px;
+  }
+  .kicker {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  .subtitle { color: var(--text-dim); font-size: 15px; margin: 0; }
+  h2 {
+    font-size: 20px;
+    margin-top: 44px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 16px; margin-top: 28px; margin-bottom: 10px; }
+  p { margin: 0 0 14px; color: var(--text); }
+  code {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 16px 18px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 18px 0;
+  }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    background: var(--bg-alt);
+  }
+  .card.rejected { border-left: 4px solid var(--accent); }
+  .card.chosen { border-left: 4px solid var(--accent-good); }
+  .card h4 { margin: 0 0 8px; font-size: 15px; }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .tag.rejected { background: #fbe9e7; color: var(--accent); }
+  .tag.chosen { background: #e3f3e8; color: var(--accent-good); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  ul, ol { padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 6px; }
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--link);
+    background: var(--bg-alt);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    margin: 18px 0;
+    font-size: 14px;
+  }
+  .callout strong { display: block; margin-bottom: 4px; }
+  footer {
+    margin-top: 56px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Migration Note · scaning-nodejs</div>
+  <h1>P-05 — Replacing ImageMagick for PNG→PDF</h1>
+  <p class="subtitle">Why the scan pipeline no longer shells out to ImageMagick, what replaced it, and what was verified.</p>
+</header>
+
+<h2>The Problem</h2>
+<p>
+  The scan service converts scanned PNG pages into PDFs. It used to do this by shelling out to
+  ImageMagick's <code>convert</code>/<code>magick</code> CLI via Node's <code>exec()</code>. Two issues
+  made this a recurring, expected failure mode rather than an edge case:
+</p>
+<ul>
+  <li>
+    <strong>Blocked by default.</strong> ImageMagick ships a <code>policy.xml</code> security policy that,
+    on Ubuntu/Debian, blocks PDF read/write out of the box
+    (<code>rights="none" pattern="PDF"</code>). Every scan on a fresh install failed with an
+    "not authorized" error until someone manually edited <code>/etc/ImageMagick-6/policy.xml</code>.
+    This was common enough that <code>handleScanError()</code> in <code>scanService.js</code> had a
+    dedicated branch just to detect it and print the fix.
+  </li>
+  <li>
+    <strong>Slow.</strong> Spawning a CLI process per page adds process-launch and encode overhead —
+    roughly 2-4 seconds per page. A 10-page scan added 20-40 seconds just for PDF assembly.
+  </li>
+</ul>
+
+<h2>Where It Showed Up in Code</h2>
+<p>All of it lived in one file: <code>src/services/scanService.js</code>.</p>
+<table>
+  <thead><tr><th>Function</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>combinePagesToPdf()</code></td><td>Merged multiple scanned PNGs into one PDF (multi-page sessions, ADF "merged" mode)</td></tr>
+    <tr><td><code>convertPngToPdf()</code></td><td>Converted a single PNG into its own PDF (ADF "separate" mode)</td></tr>
+    <tr><td><code>executeScan()</code></td><td>Legacy single-shot <code>/api/scan</code> path — called ImageMagick directly via <code>spawnAsync</code></td></tr>
+    <tr><td><code>checkPageDimensions()</code></td><td>Diagnostic-only geometry check, shelled out to ImageMagick's <code>identify</code></td></tr>
+    <tr><td><code>handleScanError()</code></td><td>Detected the policy.xml failure and ImageMagick "not found" errors to produce a readable message</td></tr>
+    <tr><td><code>detectImageMagick()</code>, <code>IM_COMMAND</code></td><td>Module-load-time probe to pick <code>convert</code> vs <code>magick</code> depending on installed version</td></tr>
+  </tbody>
+</table>
+
+<h2>Options Considered</h2>
+<div class="grid-2">
+  <div class="card rejected">
+    <span class="tag rejected">Rejected</span>
+    <h4>img2pdf (Python CLI)</h4>
+    <p style="margin-bottom:0">
+      Solves the policy.xml problem — no ImageMagick involved — and is fast (wraps images into a PDF
+      without re-encoding). But it's a Python tool: it would require installing Python/pip on every
+      host running this service. This team doesn't use Python anywhere else in the stack, so trading
+      one CLI dependency (ImageMagick) for another (Python + pip + img2pdf) wasn't worth it.
+    </p>
+  </div>
+  <div class="card chosen">
+    <span class="tag chosen">Chosen</span>
+    <h4>sharp + pdf-lib (Node)</h4>
+    <p style="margin-bottom:0">
+      Both are plain npm packages, installed with <code>npm install</code> — no OS packages, no external
+      CLI, no Python. <code>sharp</code> ships prebuilt native binaries for Linux/macOS/Windows (nothing
+      to compile). <code>pdf-lib</code> is pure JavaScript. Both run in-process, eliminating the
+      per-page CLI spawn cost entirely.
+    </p>
+  </div>
+</div>
+
+<h2>What Changed</h2>
+
+<h3>package.json</h3>
+<p>Added two dependencies:</p>
+<pre><code>"pdf-lib": "^1.17.1",
+"sharp": "^0.33.5"</code></pre>
+
+<h3>scanService.js</h3>
+<ul>
+  <li>Removed <code>IM_COMMAND</code>, <code>detectImageMagick()</code>, <code>imgToPdfCmd()</code>, and <code>buildImgToPdfArgs()</code> entirely — there's no ImageMagick binary to detect or shell out to anymore.</li>
+  <li>Added <code>pngToJpegBuffer(pngPath)</code> — uses <code>sharp</code> to recompress a scanned PNG to JPEG at the same quality ImageMagick used to apply (<code>SCAN_QUALITY</code>, default <code>82</code>).</li>
+  <li>Added <code>embedPageImage(pdfDoc, pngPath)</code> — embeds one JPEG-compressed page into a <code>pdf-lib</code> <code>PDFDocument</code>, sized to fill the page.</li>
+  <li><code>combinePagesToPdf()</code> and <code>convertPngToPdf()</code> rewritten to build a <code>PDFDocument</code> in-process and write it to disk with <code>fs.writeFileSync</code> — same function signatures, same output contract, no subprocess.</li>
+  <li><code>executeScan()</code>'s legacy single-shot path now calls the same <code>convertPngToPdf</code> logic instead of <code>spawnAsync(IM_COMMAND, buildImgToPdfArgs(...))</code>.</li>
+  <li><code>checkPageDimensions()</code> now reads width/height via <code>sharp(path).metadata()</code> instead of shelling out to <code>identify</code>.</li>
+  <li><code>handleScanError()</code> — removed the policy.xml branch and the ImageMagick-specific wording in the "not found" branch, since that failure mode no longer exists for this service.</li>
+</ul>
+
+<h3>README.md</h3>
+<ul>
+  <li>Architecture diagram updated: <code>PNG → ImageMagick → PDF</code> → <code>PNG → sharp/pdf-lib → PDF</code>.</li>
+  <li>Removed <code>imagemagick</code> from the Linux/macOS install instructions and dropped the "convert: not found" troubleshooting entry.</li>
+  <li>Added a "PDF Generation: Why No ImageMagick" section with the same problem/options/solution summary as this page, for anyone reading the README who wonders why there's no ImageMagick install step.</li>
+</ul>
+
+<div class="callout">
+  <strong>Nothing downstream changed.</strong>
+  Routes (<code>scanSession.routes.js</code>, <code>docs.routes.js</code>), the ADF job manager
+  (<code>autoScanJobManager.js</code>), and the frontend all just expect a valid PDF file to exist at a
+  given path — none of them care how the bytes were produced. That's what made this a safe,
+  contained, drop-in swap.
+</div>
+
+<h2>Verification</h2>
+<ol>
+  <li><code>npm install</code> in <code>scaning-nodejs/</code> to pull in <code>sharp</code> and <code>pdf-lib</code>.</li>
+  <li>Single-shot scan (<code>GET /api/scan</code>) → confirmed <code>executeScan</code> produces a valid, openable PDF.</li>
+  <li>Multi-page manual scan session (<code>POST /api/scan/complete/:sessionId</code>) → confirmed <code>combinePagesToPdf</code> merges multiple pages in order into one valid PDF.</li>
+  <li>ADF auto-scan job, both <code>"separate"</code> and <code>"merged"</code> output modes → confirmed <code>convertPngToPdf</code>/<code>combinePagesToPdf</code> are invoked correctly and jobs finalize with valid <code>filePath</code>s.</li>
+  <li>Compared output PDF file sizes against prior ImageMagick-produced PDFs for the same source pages — comparable, given matching JPEG quality.</li>
+  <li>Fetched a produced PDF via <code>GET /api/docs/:examCode/:filename</code> and confirmed it renders correctly in the browser.</li>
+  <li>Confirmed no remaining references to <code>convert</code>/<code>magick</code>/<code>IM_COMMAND</code>/<code>policy.xml</code> in <code>scanService.js</code>.</li>
+</ol>
+
+<footer>
+  Related: <code>AUDIT.md</code> — P-05 (originally proposed <code>img2pdf</code>; superseded by this
+  Node-only approach) and R-04 (<code>detectImageMagick</code> race condition, now moot since
+  ImageMagick was removed entirely).
+</footer>
+
+</div>
+</body>
+</html>

@@ -7,8 +7,13 @@ const {
   waitForBatchReady,
   triggerNextBatchPage,
   combinePagesToPdf,
+  invalidateDeviceCache,
+  isDeviceOpenFailure,
+  sleep,
+  AIRSCAN_RETRY_DELAY_MS,
 } = require("../services/scanService");
 const { createSession, getSession, removeSession } = require("../services/sessionManager");
+const { acquireScannerLock, releaseScannerLock } = require("../services/scannerLock");
 const { buildOutputPath, validateOutputFile, SCANS_DIR } = require("../utils/fileHandler");
 
 const router = express.Router();
@@ -54,7 +59,15 @@ router.post("/scan/start", async (req, res) => {
   // opened once and stays open for all pages. The process waits for '\n' on
   // stdin before scanning each page.
   if (process.platform === "linux" || process.platform === "darwin") {
-    try {
+    if (!acquireScannerLock(session.id)) {
+      removeSession(session.id, true);
+      return res.status(503).set("Retry-After", "5").json({
+        success: false,
+        message: "Scanner is busy with another scan session. Retry in 5 seconds.",
+      });
+    }
+
+    const openBatchDevice = async () => {
       const device = await detectLinuxDeviceForced();
       session.device = device;
 
@@ -71,6 +84,23 @@ router.post("/scan/start", async (req, res) => {
       // Wait until the process has printed its first "Place document... Press RETURN"
       // prompt — confirms the device opened successfully before we return to the client.
       await waitForBatchReady(child);
+
+      return device;
+    };
+
+    try {
+      let device;
+      try {
+        device = await openBatchDevice();
+      } catch (err) {
+        if (!isDeviceOpenFailure(err.message)) throw err;
+        // A network/airscan scanner can take a moment to release a stale
+        // eSCL session from a previous attempt — wait once, then retry.
+        invalidateDeviceCache();
+        logger.warn(`Session ${session.id}: device open failed. Waiting ${AIRSCAN_RETRY_DELAY_MS}ms before retry...`);
+        await sleep(AIRSCAN_RETRY_DELAY_MS);
+        device = await openBatchDevice();
+      }
 
       logger.info(`Session ${session.id}: batch process ready (device: ${device || "auto"})`);
     } catch (err) {
@@ -144,16 +174,29 @@ router.post("/scan/page/:sessionId", async (req, res) => {
       session.scannedPages.push(pngPath);
     } else {
       // ── Windows / fallback path: single-process per page ──────────────────
-      const { scanSinglePage } = require("../services/scanService");
-      const pngPath = session.batchPngPaths[pageNumber - 1] ||
-        require("path").join("/tmp", `eduscan_${sessionId}_page_${pageNumber}.png`);
-      const { device } = await scanSinglePage(pngPath, session.resolution);
-      if (device && !session.device) session.device = device;
-
-      if (!fs.existsSync(pngPath) || fs.statSync(pngPath).size === 0) {
-        throw new Error("Scan command succeeded but image was not created or is empty. Ensure a document is placed face-down on the flatbed.");
+      // Unlike the batch-process path above, the device here is opened and
+      // closed fresh within this one request, so the lock is acquired and
+      // released within this same request instead of spanning the session.
+      if (!acquireScannerLock(sessionId)) {
+        return res.status(503).set("Retry-After", "5").json({
+          success: false,
+          message: "Scanner is busy with another scan job. Retry in 5 seconds.",
+        });
       }
-      session.scannedPages.push(pngPath);
+      try {
+        const { scanSinglePage } = require("../services/scanService");
+        const pngPath = session.batchPngPaths[pageNumber - 1] ||
+          require("path").join("/tmp", `eduscan_${sessionId}_page_${pageNumber}.png`);
+        const { device } = await scanSinglePage(pngPath, session.resolution);
+        if (device && !session.device) session.device = device;
+
+        if (!fs.existsSync(pngPath) || fs.statSync(pngPath).size === 0) {
+          throw new Error("Scan command succeeded but image was not created or is empty. Ensure a document is placed face-down on the flatbed.");
+        }
+        session.scannedPages.push(pngPath);
+      } finally {
+        releaseScannerLock(sessionId);
+      }
     }
 
     const remaining = session.totalPages - session.scannedPages.length;
