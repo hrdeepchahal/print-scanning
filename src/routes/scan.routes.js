@@ -3,6 +3,7 @@ const { executeScan } = require("../services/scanService");
 const { acquireScannerLock, releaseScannerLock, RETRY_AFTER_SECONDS } = require("../services/scannerLock");
 const logger = require("../utils/logger");
 const { SCANS_DIR } = require("../utils/fileHandler");
+const { parseDpi, validateDpi, isClientError } = require("../../shared/validateScan");
 
 const router = express.Router();
 
@@ -91,8 +92,8 @@ router.get("/scan", async (req, res) => {
     });
   }
 
-  const dpi = parseInt(resolution) || 300;
-  if (dpi < 72 || dpi > 1200) {
+  const dpi = parseDpi(resolution);
+  if (!validateDpi(dpi)) {
     return res.status(400).json({
       success: false,
       message: "resolution must be between 72 and 1200 DPI",
@@ -130,13 +131,7 @@ router.get("/scan", async (req, res) => {
     logger.error(`Scan failed: ${err.message}`);
 
     // Distinguish between client errors and server/hardware errors
-    const isClientError =
-      err.message.includes("not found") ||
-      err.message.includes("not installed") ||
-      err.message.includes("not connected") ||
-      err.message.includes("Unsupported platform");
-
-    return res.status(isClientError ? 422 : 500).json({
+    return res.status(isClientError(err) ? 422 : 500).json({
       success: false,
       message: err.message,
     });

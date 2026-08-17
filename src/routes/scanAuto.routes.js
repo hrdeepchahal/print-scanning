@@ -5,6 +5,7 @@ const { getScannerCapabilities } = require("../services/capabilityService");
 const { createJob, getJob, cancelJob } = require("../services/autoScanJobManager");
 const { RETRY_AFTER_SECONDS } = require("../services/scannerLock");
 const { SCANS_DIR } = require("../utils/fileHandler");
+const { parseDpi, validateDpi, parsePageCount } = require("../../shared/validateScan");
 
 const router = express.Router();
 
@@ -94,13 +95,13 @@ router.post("/scan/auto/start", async (req, res) => {
     return res.status(400).json({ success: false, message: "Missing required field: examCode" });
   }
 
-  const pages = parseInt(pageCount);
-  if (!pages || pages < 1 || pages > 100) {
+  const pages = parsePageCount(pageCount, { min: 1, max: 100 });
+  if (!pages) {
     return res.status(400).json({ success: false, message: "pageCount must be a number between 1 and 100" });
   }
 
-  const dpi = parseInt(resolution) || 300;
-  if (dpi < 72 || dpi > 1200) {
+  const dpi = parseDpi(resolution);
+  if (!validateDpi(dpi)) {
     return res.status(400).json({ success: false, message: "resolution must be between 72 and 1200 DPI" });
   }
 

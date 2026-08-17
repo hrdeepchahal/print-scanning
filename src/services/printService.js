@@ -64,6 +64,24 @@ function ensureTempDir() {
   }
 }
 
+/**
+ * Puppeteer 20+ downloads Chromium to the OS user cache (e.g.
+ * ~/.cache/puppeteer), a path outside the project tree that electron-builder
+ * doesn't package. A packaged app has no Chromium there on an end-user's
+ * machine, so scripts/stage-chromium.js copies the build machine's Chromium
+ * into resources/chromium/<platform>/ as an extraResource — this resolves
+ * that bundled copy at runtime. Returns undefined (Puppeteer's own default)
+ * when not packaged or the bundled copy is missing, so dev behavior is
+ * unchanged.
+ */
+function getBundledChromiumPath() {
+  if (!process.resourcesPath) return undefined;
+  const platformDir = os.platform() === "win32" ? "win32" : os.platform() === "darwin" ? "darwin" : "linux";
+  const exeName = path.basename(puppeteer.executablePath());
+  const candidate = path.join(process.resourcesPath, "chromium", platformDir, exeName);
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
 let _browser = null;
 let _launching = null;
 
@@ -86,6 +104,7 @@ async function getBrowser() {
   _launching = puppeteer
     .launch({
       headless: true,
+      executablePath: getBundledChromiumPath(),
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
     })
     .then((browser) => {

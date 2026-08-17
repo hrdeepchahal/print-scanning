@@ -1,9 +1,8 @@
-const crypto = require("crypto");
-const fs = require("fs");
 const logger = require("../utils/logger");
 const { killBatchProcess } = require("./scanService");
 const { releaseScannerLock } = require("./scannerLock");
 const { createOpenIndex } = require("./crashRecovery");
+const { generateId, cleanupFiles } = require("../../shared/utils");
 
 const SESSION_TIMEOUT_MS =
   parseInt(process.env.SCAN_SESSION_TIMEOUT_MS) || 30 * 60 * 1000; // 30 min
@@ -33,10 +32,6 @@ sessionIndex.recoverOrphaned();
  * @property {string}        device
  * @property {number}        createdAt
  */
-
-function generateId() {
-  return crypto.randomBytes(12).toString("hex");
-}
 
 /**
  * Create a new multi-page scan session.
@@ -92,16 +87,7 @@ function cleanupTempFiles(session) {
 
   // Clean up all temp PNGs — both already-scanned pages and pre-computed paths
   const allPaths = new Set([...session.scannedPages, ...session.batchPngPaths]);
-  for (const filePath of allPaths) {
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        logger.info(`Cleaned up temp file: ${filePath}`);
-      }
-    } catch (err) {
-      logger.warn(`Failed to clean up ${filePath}: ${err.message}`);
-    }
-  }
+  cleanupFiles([...allPaths]);
 }
 
 /**

@@ -39,3 +39,14 @@ Thumbs.db
 *.p12
 *.pfx
 .npmrc
+
+# Electron build output
+dist/
+
+# Bundled OS-level scanner binaries (large, platform-specific — fetched per-build, not committed)
+resources/naps2/*.exe
+resources/naps2/*.dll
+resources/bin/scanimage
+
+# Staged Chromium for packaging (large, staged per-build by scripts/stage-chromium.js)
+resources/chromium/

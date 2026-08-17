@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
@@ -15,6 +14,8 @@ const {
 } = require("./scanService");
 const { acquireScannerLock, releaseScannerLock } = require("./scannerLock");
 const { createOpenIndex } = require("./crashRecovery");
+const { generateId, sleep, cleanupFiles } = require("../../shared/utils");
+const { getTempDir } = require("../../shared/platform");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Background job runner for POST /api/scan/auto/start.
@@ -38,22 +39,6 @@ const jobs = new Map();
 const jobIndex = createOpenIndex(".jobs-open.json", (id) => `eduscan_auto_${id}_`);
 jobIndex.recoverOrphaned();
 
-function generateId() {
-  return crypto.randomBytes(8).toString("hex");
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function cleanupPaths(paths) {
-  for (const p of paths) {
-    try {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch (_) {}
-  }
-}
-
 /**
  * Start a new automatic scan job and return its initial (still "scanning")
  * state immediately — the actual scanning runs in the background.
@@ -64,7 +49,7 @@ function cleanupPaths(paths) {
  */
 function createJob({ device, platform, examCode, uniqueId, pageCount, resolution, outputMode, timeoutMs }) {
   const job = {
-    id: generateId(),
+    id: generateId(8),
     examCode,
     uniqueId,
     pageCount,
@@ -126,7 +111,7 @@ function cancelJob(id) {
     job.status = "cancelled";
     job.message = `Cancelled — ${job.scannedCount} page(s) already scanned remain saved.`;
   }
-  cleanupPaths(job._pendingPngPaths);
+  cleanupFiles(job._pendingPngPaths);
   job._pendingPngPaths = [];
   return job;
 }
@@ -134,7 +119,7 @@ function cancelJob(id) {
 // ── Linux / macOS — one scanimage --batch process, polled for new pages ────
 
 async function runLinuxJob(job, timeoutMs) {
-  const pngPattern = path.join("/tmp", `eduscan_auto_${job.id}_%03d.png`);
+  const pngPattern = path.join(getTempDir(), `eduscan_auto_${job.id}_%03d.png`);
   const args = [
     ...buildSaneArgs(job.device, job.resolution),
     "--source", "ADF",
@@ -159,7 +144,7 @@ async function runLinuxJob(job, timeoutMs) {
   }
 
   const pngPaths = Array.from({ length: job.pageCount }, (_, i) =>
-    path.join("/tmp", `eduscan_auto_${job.id}_${String(i + 1).padStart(3, "0")}.png`)
+    path.join(getTempDir(), `eduscan_auto_${job.id}_${String(i + 1).padStart(3, "0")}.png`)
   );
 
   let stderrBuf = "";
@@ -201,7 +186,7 @@ async function runLinuxJob(job, timeoutMs) {
     await sleep(POLL_INTERVAL_MS);
   }
 
-  cleanupPaths(pngPaths.slice(nextIndex));
+  cleanupFiles(pngPaths.slice(nextIndex));
   if (timedOut) logger.warn(`Auto scan job ${job.id}: timed out after ${timeoutMs}ms with ${nextIndex} page(s) scanned.`);
 }
 
@@ -221,7 +206,7 @@ async function runWindowsJob(job) {
   for (let i = 0; i < job.pageCount; i++) {
     if (job.status !== "scanning") break;
     const pageNumber = i + 1;
-    const tmpBase = path.join("/tmp", `eduscan_auto_${job.id}_${String(pageNumber).padStart(3, "0")}.png`);
+    const tmpBase = path.join(getTempDir(), `eduscan_auto_${job.id}_${String(pageNumber).padStart(3, "0")}.png`);
     try {
       await scanSinglePage(tmpBase, job.resolution);
       const producedPdf = tmpBase.replace(/\.png$/i, ".pdf");
@@ -305,7 +290,7 @@ async function finalize(job, scannedCount, stderrTail, timedOutAfterMs) {
       job.error = `Failed to merge pages into PDF: ${err.message}`;
       return;
     } finally {
-      cleanupPaths(job._pendingPngPaths);
+      cleanupFiles(job._pendingPngPaths);
       job._pendingPngPaths = [];
     }
     job.message = `${scannedCount} page(s) scanned and merged into ${job.files[0].filename}`;

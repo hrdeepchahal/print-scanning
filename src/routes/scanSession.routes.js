@@ -1,20 +1,17 @@
 const express = require("express");
 const fs = require("fs");
+const path = require("path");
 const logger = require("../utils/logger");
 const {
-  detectLinuxDeviceForced,
-  spawnBatchProcess,
-  waitForBatchReady,
   triggerNextBatchPage,
   combinePagesToPdf,
-  invalidateDeviceCache,
-  isDeviceOpenFailure,
-  sleep,
-  AIRSCAN_RETRY_DELAY_MS,
+  openBatchSession,
 } = require("../services/scanService");
 const { createSession, getSession, removeSession } = require("../services/sessionManager");
 const { acquireScannerLock, releaseScannerLock, RETRY_AFTER_SECONDS } = require("../services/scannerLock");
 const { buildOutputPath, validateOutputFile, SCANS_DIR } = require("../utils/fileHandler");
+const { parseDpi, validateDpi, parsePageCount, isClientError } = require("../../shared/validateScan");
+const { getTempDir } = require("../../shared/platform");
 
 const router = express.Router();
 
@@ -77,13 +74,13 @@ router.post("/scan/start", async (req, res) => {
     return res.status(400).json({ success: false, message: "Missing required field: examCode" });
   }
 
-  const pages = parseInt(pageCount);
-  if (!pages || pages < 1 || pages > 100) {
+  const pages = parsePageCount(pageCount, { min: 1, max: 100 });
+  if (!pages) {
     return res.status(400).json({ success: false, message: "pageCount must be a number between 1 and 100" });
   }
 
-  const dpi = parseInt(resolution) || 300;
-  if (dpi < 72 || dpi > 1200) {
+  const dpi = parseDpi(resolution);
+  if (!validateDpi(dpi)) {
     return res.status(400).json({ success: false, message: "resolution must be between 72 and 1200 DPI" });
   }
 
@@ -109,40 +106,19 @@ router.post("/scan/start", async (req, res) => {
       });
     }
 
-    const openBatchDevice = async () => {
-      const device = await detectLinuxDeviceForced();
-      session.device = device;
-
-      const { child, pngPaths } = spawnBatchProcess({
-        device,
+    try {
+      // Detects the device, spawns the persistent batch process, and waits for
+      // its "Place document... Press RETURN" readiness prompt — retrying once
+      // on a device-open failure. See scanService.openBatchSession.
+      const { device, child, pngPaths } = await openBatchSession({
         sessionId: session.id,
         pageCount: pages,
         resolution: dpi,
       });
 
+      session.device = device;
       session.batchProcess = child;
       session.batchPngPaths = pngPaths;
-
-      // Wait until the process has printed its first "Place document... Press RETURN"
-      // prompt — confirms the device opened successfully before we return to the client.
-      await waitForBatchReady(child);
-
-      return device;
-    };
-
-    try {
-      let device;
-      try {
-        device = await openBatchDevice();
-      } catch (err) {
-        if (!isDeviceOpenFailure(err.message)) throw err;
-        // A network/airscan scanner can take a moment to release a stale
-        // eSCL session from a previous attempt — wait once, then retry.
-        invalidateDeviceCache();
-        logger.warn(`Session ${session.id}: device open failed. Waiting ${AIRSCAN_RETRY_DELAY_MS}ms before retry...`);
-        await sleep(AIRSCAN_RETRY_DELAY_MS);
-        device = await openBatchDevice();
-      }
 
       logger.info(`Session ${session.id}: batch process ready (device: ${device || "auto"})`);
     } catch (err) {
@@ -273,7 +249,7 @@ router.post("/scan/page/:sessionId", async (req, res) => {
       try {
         const { scanSinglePage } = require("../services/scanService");
         const pngPath = session.batchPngPaths[pageNumber - 1] ||
-          require("path").join("/tmp", `eduscan_${sessionId}_page_${pageNumber}.png`);
+          path.join(getTempDir(), `eduscan_${sessionId}_page_${pageNumber}.png`);
         const { device } = await scanSinglePage(pngPath, session.resolution);
         if (device && !session.device) session.device = device;
 
@@ -302,14 +278,7 @@ router.post("/scan/page/:sessionId", async (req, res) => {
   } catch (err) {
     logger.error(`Session ${sessionId}: page ${pageNumber} failed — ${err.message}`);
 
-    const isClientError =
-      err.message.includes("not found") ||
-      err.message.includes("not installed") ||
-      err.message.includes("not connected") ||
-      err.message.includes("Unsupported platform") ||
-      err.message.includes("face-down");
-
-    return res.status(isClientError ? 422 : 500).json({
+    return res.status(isClientError(err) ? 422 : 500).json({
       success: false,
       sessionId,
       currentPage: pageNumber,

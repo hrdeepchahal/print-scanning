@@ -7,7 +7,7 @@ const { isSwaggerEnabled } = require("./src/swagger/swagger.config");
 
 const PORT = process.env.PORT || 4545;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Print Scanning Local Service running on port ${PORT}`);
   logger.info(`─────────────────────────────────────────────`);
   logger.info(`  Docs:       http://localhost:${PORT}/`);
@@ -21,6 +21,11 @@ app.listen(PORT, () => {
   }
   logger.info(`─────────────────────────────────────────────`);
   logCapabilities();
+
+  // Signal readiness to the Electron parent, if running as its forked child.
+  if (process.send) {
+    process.send({ type: "server:ready", payload: { port: Number(PORT) }, timestamp: Date.now() });
+  }
 });
 
 async function logCapabilities() {
@@ -49,8 +54,12 @@ async function logCapabilities() {
 
 async function shutdown() {
   await closeBrowser();
-  process.exit(0);
+  server.close(() => process.exit(0));
 }
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+// ServerManager.stop() sends this over IPC before falling back to SIGTERM.
+process.on("message", (msg) => {
+  if (msg && msg.type === "shutdown") shutdown();
+});

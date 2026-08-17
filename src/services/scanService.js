@@ -5,18 +5,14 @@ const sharp = require("sharp");
 const { PDFDocument } = require("pdf-lib");
 const logger = require("../utils/logger");
 const { buildOutputPath, validateOutputFile } = require("../utils/fileHandler");
+const { sleep } = require("../../shared/utils");
+const { getTempDir, getNaps2Path } = require("../../shared/platform");
 
 const SCAN_TIMEOUT_MS = parseInt(process.env.SCAN_TIMEOUT_MS) || 60000;
 const SANE_DEVICE_CACHE_MS = parseInt(process.env.SANE_DEVICE_CACHE_MS) || 300000;
 const AIRSCAN_RETRY_DELAY_MS = parseInt(process.env.AIRSCAN_RETRY_DELAY_MS) || 10000;
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-const NAPS2_PATH =
-  process.env.NAPS2_PATH ||
-  "C:\\Program Files\\NAPS2\\naps2.console.exe";
+const NAPS2_PATH = getNaps2Path();
 
 function execAsync(command, timeoutMs = SCAN_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
@@ -224,7 +220,7 @@ async function scanToPng(device, outputPngPath, resolution) {
  */
 function spawnBatchProcess({ device, sessionId, pageCount, resolution }) {
   // scanimage uses %d for page number in --batch pattern
-  const pngPattern = path.join("/tmp", `eduscan_${sessionId}_%03d.png`);
+  const pngPattern = path.join(getTempDir(), `eduscan_${sessionId}_%03d.png`);
 
   const args = [
     ...buildSaneArgs(device, resolution),
@@ -245,7 +241,7 @@ function spawnBatchProcess({ device, sessionId, pageCount, resolution }) {
 
   // Expected PNG paths — scanimage numbers them 001, 002, ...
   const pngPaths = Array.from({ length: pageCount }, (_, i) =>
-    path.join("/tmp", `eduscan_${sessionId}_${String(i + 1).padStart(3, "0")}.png`)
+    path.join(getTempDir(), `eduscan_${sessionId}_${String(i + 1).padStart(3, "0")}.png`)
   );
 
   return { child, pngPaths };
@@ -394,6 +390,37 @@ function killBatchProcess(child) {
     child.stdin.end();
     child.kill("SIGTERM");
   } catch (_) {}
+}
+
+/**
+ * Open a batch scan session for POST /api/scan/start: detect the device,
+ * spawn the persistent batch process, and wait for its readiness prompt.
+ * On a device-open failure, invalidates the cache and retries once after
+ * AIRSCAN_RETRY_DELAY_MS — the same retry policy withDeviceOpenRetry applies
+ * to single-page scans, kept here as its own function because the "attempt"
+ * for a batch session returns state (child, pngPaths) the caller needs, not
+ * just success/failure.
+ *
+ * @param {{ sessionId: string, pageCount: number, resolution: number }} opts
+ * @returns {Promise<{ device: string, child: ChildProcess, pngPaths: string[] }>}
+ */
+async function openBatchSession({ sessionId, pageCount, resolution }) {
+  const attempt = async () => {
+    const device = await detectLinuxDeviceForced();
+    const { child, pngPaths } = spawnBatchProcess({ device, sessionId, pageCount, resolution });
+    await waitForBatchReady(child);
+    return { device, child, pngPaths };
+  };
+
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!isDeviceOpenFailure(err.message)) throw err;
+    invalidateDeviceCache();
+    logger.warn(`Session ${sessionId}: device open failed. Waiting ${AIRSCAN_RETRY_DELAY_MS}ms before retry...`);
+    await sleep(AIRSCAN_RETRY_DELAY_MS);
+    return await attempt();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -595,7 +622,7 @@ async function executeScan({ uniqueId = null, examCode, resolution = 300 }) {
         if (stderr) logger.warn(`Scanner stderr: ${stderr}`);
       } else if (platform === "linux" || platform === "darwin") {
         detectedDevice = await detectLinuxDevice();
-        const tmpPng = path.join("/tmp", `scan_${Date.now()}_${process.pid}.png`);
+        const tmpPng = path.join(getTempDir(), `scan_${Date.now()}_${process.pid}.png`);
         try {
           const { stdout, stderr } = await scanToPng(detectedDevice, tmpPng, resolution);
           if (stdout) logger.info(`Scanner stdout: ${stdout}`);
@@ -626,8 +653,6 @@ module.exports = {
   detectLinuxDeviceForced,
   invalidateDeviceCache,
   isDeviceOpenFailure,
-  sleep,
-  AIRSCAN_RETRY_DELAY_MS,
   buildSaneArgs,
   scanSinglePage,
   combinePagesToPdf,
@@ -637,4 +662,5 @@ module.exports = {
   waitForBatchReady,
   triggerNextBatchPage,
   killBatchProcess,
+  openBatchSession,
 };

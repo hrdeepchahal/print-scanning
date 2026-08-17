@@ -6,51 +6,24 @@ appId: com.antiersolutions.printscansvc
 productName: "Print & Scan Service"
 copyright: "Copyright © 2026 Antier Solutions"
 
-# ─── Entry points ─────────────────────────────────────────────────────────────
-main: electron/main.js
-
 # ─── Output directory ─────────────────────────────────────────────────────────
+# Entry point comes from package.json's "main" field (electron/main.js) —
+# electron-builder has no top-level "main" key of its own.
 directories:
   output: dist/
   buildResources: build/  # icons go here: icon.icns, icon.ico, icon.png
 
 # ─── Files to include in the packaged app ─────────────────────────────────────
 files:
+  - "index.js"
   - "electron/**/*"
   - "shared/**/*"
   - "src/**/*"
   - "package.json"
   - ".env"
-  - "!node_modules/puppeteer/.local-chromium/**"   # exclude dev chromium cache
   - "!**/*.map"
   - "!**/*.ts"
   - "!**/__tests__/**"
-
-# ─── Extra resources bundled alongside the app ────────────────────────────────
-# These are copied into process.resourcesPath at build time.
-# DependencyManager.js reads them from there at runtime.
-extraResources:
-  # ── Windows: NAPS2 portable ──────────────────────────────────────────────
-  # Download NAPS2 portable ZIP from https://www.naps2.com/download
-  # Extract into resources/naps2/ before building.
-  # Structure: resources/naps2/naps2.console.exe + DLLs
-  - from: "resources/naps2/"
-    to:   "naps2/"
-    filter:
-      - "**/*"
-    # Only include on Windows builds — saves 30 MB on Linux/macOS installers
-    platform: win32
-
-  # ── macOS: bundled scanimage binary (fallback if Homebrew not present) ───
-  # Build with: brew install sane-backends, then copy:
-  #   cp /opt/homebrew/bin/scanimage resources/bin/scanimage
-  # Also copy required dylibs if needed.
-  - from: "resources/bin/"
-    to:   "bin/"
-    filter:
-      - "scanimage"
-      - "*.dylib"
-    platform: darwin
 
 # ─── Windows ──────────────────────────────────────────────────────────────────
 win:
@@ -61,6 +34,21 @@ win:
   # Request admin on install (needed to write to Program Files)
   # The Electron app itself does NOT need admin at runtime — NAPS2 bundled portable.
   requestedExecutionLevel: asInvoker
+  # NAPS2 portable — DependencyManager.js reads this from resourcesPath at
+  # runtime. Per-platform extraResources must live under win:/linux:/mac:,
+  # not at the top level (a shared "platform:" filter isn't part of the
+  # schema). Chromium is bundled the same way on every platform — run
+  # `node scripts/stage-chromium.js` on this OS before building (see
+  # printService.js's getBundledChromiumPath()).
+  extraResources:
+    - from: "resources/naps2/"
+      to: "naps2/"
+      filter:
+        - "**/*"
+    - from: "resources/chromium/win32/"
+      to: "chromium/win32/"
+      filter:
+        - "**/*"
 
 nsis:
   oneClick: true            # silent install — teacher just double-clicks .exe
@@ -85,6 +73,11 @@ linux:
   description: |
     A local HTTP service (port 4545) that enables websites to silently print
     to any printer and scan from any scanner without browser print dialogs.
+  extraResources:
+    - from: "resources/chromium/linux/"
+      to: "chromium/linux/"
+      filter:
+        - "**/*"
 
 deb:
   # apt will auto-install these when teacher installs the .deb
@@ -109,6 +102,24 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Bundled scanimage binary — fallback if Homebrew isn't present. See win:'s
+  # extraResources comment above for why this lives under mac:, not top-level.
+  #
+  # NOTE — universal build caveat: mac.target above builds both x64 and
+  # arm64 in one pass, but resources/chromium/darwin/ can only hold ONE
+  # arch's Chromium (whichever this build machine's `npm install` fetched).
+  # A true universal build needs a CI matrix that stages each arch's
+  # Chromium into its own arch-specific resource folder — out of scope here.
+  extraResources:
+    - from: "resources/bin/"
+      to: "bin/"
+      filter:
+        - "scanimage"
+        - "*.dylib"
+    - from: "resources/chromium/darwin/"
+      to: "chromium/darwin/"
+      filter:
+        - "**/*"
 
 dmg:
   title: "Print & Scan Service"

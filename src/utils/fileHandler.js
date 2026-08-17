@@ -1,11 +1,13 @@
 const fs = require("fs");
 const path = require("path");
 const logger = require("./logger");
+const { getScansDir } = require("../../shared/platform");
 
-// Root scans directory — configurable via env, defaults to /scans in project root
+// Root scans directory — configurable via env (electron/main.js sets this to
+// the OS user data directory when packaged), falls back to ./scans otherwise.
 const SCANS_DIR = process.env.SCANS_DIR
   ? path.resolve(process.env.SCANS_DIR)
-  : path.join(__dirname, "../../scans");
+  : getScansDir();
 
 /**
  * Ensure the root scans directory exists.

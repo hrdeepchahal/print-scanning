@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const logger = require("../utils/logger");
 const { ensureScansDirectory, SCANS_DIR } = require("../utils/fileHandler");
+const { getTempDir } = require("../../shared/platform");
 
 /*
  * Scan sessions and auto-scan jobs both hold a live scanimage child process
@@ -59,17 +60,18 @@ function createOpenIndex(fileName, tempFilePrefix) {
 
   function cleanupOrphanedTempFiles(id) {
     const prefix = tempFilePrefix(id);
+    const tempDir = getTempDir();
     let names;
     try {
-      names = fs.readdirSync("/tmp");
+      names = fs.readdirSync(tempDir);
     } catch (err) {
-      logger.warn(`Could not scan /tmp for orphaned files (${id}): ${err.message}`);
+      logger.warn(`Could not scan ${tempDir} for orphaned files (${id}): ${err.message}`);
       return;
     }
     for (const name of names) {
       if (!name.startsWith(prefix)) continue;
       try {
-        fs.unlinkSync(path.join("/tmp", name));
+        fs.unlinkSync(path.join(tempDir, name));
         logger.info(`Removed orphaned temp file from unclean shutdown (${id}): ${name}`);
       } catch (err) {
         logger.warn(`Failed to remove orphaned temp file ${name}: ${err.message}`);

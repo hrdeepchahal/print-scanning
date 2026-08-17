@@ -2,10 +2,14 @@
   "name": "scaning_nodejs",
   "version": "1.0.0",
   "description": "Cross-platform document scanning service",
-  "main": "index.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "electron": "electron .",
+    "build:win": "node scripts/stage-chromium.js && electron-builder --win",
+    "build:linux": "node scripts/stage-chromium.js && electron-builder --linux",
+    "build:mac": "node scripts/stage-chromium.js && electron-builder --mac"
   },
   "keywords": [
     "scanning",
@@ -19,6 +23,8 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "electron-log": "^5.4.4",
+    "electron-store": "^8.2.0",
     "express": "^4.19.2",
     "marked": "^17.0.5",
     "morgan": "^1.10.0",
@@ -32,6 +38,8 @@
     "winston": "^3.13.0"
   },
   "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
     "nodemon": "^3.1.4"
   }
 }
