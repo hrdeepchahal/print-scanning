@@ -6,7 +6,9 @@ const scanSessionRoutes = require("./routes/scanSession.routes");
 const scanAutoRoutes = require("./routes/scanAuto.routes");
 const docsRoutes = require("./routes/docs.routes");
 const printRoutes = require("./routes/print.routes");
+const capabilitiesRoutes = require("./routes/capabilities.routes");
 const documentationRoutes = require("./routes/documentation.routes");
+const { mountSwagger } = require("./swagger/swagger.config");
 const logger = require("./utils/logger");
 
 const app = express();
@@ -34,6 +36,8 @@ app.use("/api", scanSessionRoutes);
 app.use("/api", scanAutoRoutes);
 app.use("/api", docsRoutes);
 app.use("/api", printRoutes);
+app.use("/api", capabilitiesRoutes);
+mountSwagger(app);
 app.use("/", documentationRoutes);
 
 // Global error handler — no unhandled crashes

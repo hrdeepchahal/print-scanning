@@ -169,6 +169,20 @@ NAPS2_PATH=C:\Program Files\NAPS2\naps2.console.exe
 # Default printer name. Leave empty to use system default.
 # Find your printer name: GET /api/printers or run `lpstat -p`
 PRINTER_NAME=
+
+# Default duplex (double-sided) behavior for POST /api/print when the
+# request doesn't specify `duplex` explicitly. Overridden automatically
+# (with a warning, never a hard failure) if the printer doesn't support it —
+# see GET /api/capabilities.
+PRINT_DUPLEX_DEFAULT=false
+
+# ═══════════════════════════════════════════════════════════════
+#  DEVICE CAPABILITIES
+# ═══════════════════════════════════════════════════════════════
+
+# How long (ms) to cache the duplex/ADF capability checks (both run a shell
+# command that doesn't need to be re-run on every print/scan call).
+CAPABILITY_CACHE_MS=300000
 ```
 
 ### Variable Reference
@@ -186,6 +200,8 @@ PRINTER_NAME=
 | `SANE_SKIP_RESOLUTION` | No | `false` | Set `true` if scanner rejects `--resolution` |
 | `NAPS2_PATH` | No | default path | Windows: custom NAPS2 install location |
 | `PRINTER_NAME` | No | system default | Default printer for print jobs |
+| `PRINT_DUPLEX_DEFAULT` | No | `false` | Default for the `duplex` field on `POST /api/print` when omitted |
+| `CAPABILITY_CACHE_MS` | No | `300000` | Cache duration (ms) for duplex/ADF capability checks |
 
 ---
 
@@ -413,6 +429,14 @@ Content-Type: application/json
 | `pageCount` | number | Yes | — | Number of pages loaded in the feeder (1–100) |
 | `resolution` | number | No | `300` | DPI (72–1200) |
 | `outputMode` | string | No | `"separate"` | `"separate"` — one PDF per page, appears as each page finishes. `"merged"` — one PDF, only appears once the whole job completes. Not supported on Windows. |
+
+On Linux/macOS, this endpoint checks the connected scanner's ADF support before starting a job (see [Device Capabilities](#device-capabilities)) and rejects up front with `400` if it finds none — rather than letting the SANE batch command fail partway through:
+
+```json
+{ "success": false, "message": "This scanner (\"airscan:e2:Canon GX4000 series\") has no ADF (feeder) — automatic multi-page scanning isn't available. Use POST /api/scan for single-page scans instead." }
+```
+
+If the capability check itself can't run (rather than running and confirming no ADF), the job is allowed to start anyway — a transient check failure never blocks a scan that might otherwise succeed.
 
 **Response (returns immediately, before any page is scanned):**
 
@@ -766,6 +790,49 @@ The priority order is: `printerName` in request body → `PRINTER_NAME` env → 
 
 ---
 
+## Device Capabilities
+
+Reports whether the currently-connected printer and scanner actually support duplex (double-sided) printing and ADF (automatic feeder) bulk scanning — Linux/macOS only, via `lpoptions -p <printer> -l` and `scanimage --help -d <device>`. Windows has no equivalent driver-introspection, so its values are always `null` ("unknown", not "unsupported").
+
+This same check runs automatically once at service startup (logged as a warning if either is missing) and gates `POST /api/scan/auto/start` — see [Automatic Multi-Page Scan (ADF)](#automatic-multi-page-scan-adf). It's also surfaced live on the documentation page (`http://localhost:4545/`, **Device Capabilities** panel) so you can check a printer/scanner swap without shell access to the exam-center machine.
+
+```
+GET /api/capabilities
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "printer": {
+    "name": "Canon_GX4000_series_USB",
+    "duplexSupported": true,
+    "sidesOptions": ["one-sided", "two-sided-long-edge", "two-sided-short-edge"]
+  },
+  "scanner": {
+    "device": "airscan:e2:Canon GX4000 series",
+    "adfSupported": true,
+    "sources": ["Flatbed", "ADF"]
+  }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `printer.duplexSupported` | `true`/`false` — checked via the printer's CUPS driver. `null` on Windows (unchecked). |
+| `printer.sidesOptions` | Raw `sides` values the CUPS driver reports (empty if unsupported/unchecked). |
+| `scanner.adfSupported` | `true`/`false` — checked via `scanimage --help`. `null` on Windows, or if the check itself couldn't complete (e.g. the scanner is mid-session — see the ADF gating note above). |
+| `scanner.sources` | Raw `--source` values the SANE backend reports. |
+
+Results are cached for `CAPABILITY_CACHE_MS` (default 5 minutes) since both underlying commands can be slow on a network scanner.
+
+```bash
+curl http://localhost:4545/api/capabilities
+```
+
+---
+
 ## Print API Reference
 
 ### List Available Printers
@@ -803,8 +870,11 @@ Content-Type: application/json
 | `base64Pdf` | string | No | — | Pre-rendered PDF as base64 (skip Puppeteer) |
 | `printerName` | string | No | env/system default | Target printer from `/api/printers` |
 | `printType` | string | No | `"exam"` | `"exam"` or `"omr"` |
+| `duplex` | boolean | No | `PRINT_DUPLEX_DEFAULT` | `true` = double-sided (long-edge flip), `false` = single-sided |
 
 *Either `html` or `base64Pdf` must be provided.
+
+**Duplex printing:** requires a printer whose CUPS driver actually exposes a duplex ("sides") option — check [Device Capabilities](#device-capabilities) first. If `duplex: true` is requested but the printer doesn't support it, the job is **automatically printed single-sided instead** (never fails or drops pages) and the response includes a `warning` field explaining the downgrade.
 
 **Print types:**
 
@@ -837,6 +907,14 @@ curl -X POST http://localhost:4545/api/print \
   -d '{"html":"<div>OMR Sheet Content</div>","printType":"omr"}'
 ```
 
+**Example — print double-sided:**
+
+```bash
+curl -X POST http://localhost:4545/api/print \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<h1>Test Exam</h1>","printType":"exam","duplex":true}'
+```
+
 **Success response:**
 
 ```json
@@ -844,6 +922,17 @@ curl -X POST http://localhost:4545/api/print \
   "success": true,
   "message": "Print job queued successfully",
   "jobId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Success response, duplex requested but downgraded to single-sided:**
+
+```json
+{
+  "success": true,
+  "message": "Print job queued successfully",
+  "jobId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "warning": "Printer \"Canon_GX4000_series_USB\" doesn't support duplex — printed single-sided instead."
 }
 ```
 
@@ -1042,6 +1131,27 @@ scaning-nodejs/
 
 ---
 
+## API Documentation (Swagger)
+
+Every endpoint in this service is documented as an OpenAPI 3.0 spec, generated from JSDoc comments (`swagger-jsdoc`) and served interactively via `swagger-ui-express` — modeled on how this monorepo's NestJS services document their APIs with `@nestjs/swagger` (`DocumentBuilder` + `@ApiTags`/`@ApiOperation`/`@ApiResponse`), translated to plain Express since there are no decorators/classes here.
+
+```
+http://localhost:4545/api-docs        ← interactive Swagger UI
+http://localhost:4545/api-docs-json   ← raw OpenAPI 3.0 JSON spec
+```
+
+Endpoints are grouped into the same tags used throughout this README: **Health**, **Scanning**, **Scan Sessions**, **Auto Scan (ADF)**, **Documents**, **Printing**, **Capabilities**. An **Export JSON** button in the Swagger UI topbar downloads the spec directly (fetches `/api-docs-json`).
+
+**Enabling/disabling:** controlled by `SWAGGER_ENABLED` in `.env` (`true`/`false`). If unset, Swagger is enabled whenever `NODE_ENV !== "production"` — since this service never sets `NODE_ENV`, it's on by default. Disable it with:
+
+```env
+SWAGGER_ENABLED=false
+```
+
+There is no authentication on these docs or the underlying API — this service is intended for local network use only, on the exam-center machine attached to the physical scanner/printer.
+
+---
+
 ## API Routes Summary
 
 ### Scanning Endpoints
@@ -1066,7 +1176,13 @@ scaning-nodejs/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/printers` | List available printers + default |
-| `POST` | `/api/print` | Silent print HTML content |
+| `POST` | `/api/print` | Silent print HTML content (supports `duplex`) |
+
+### Device Capabilities Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/capabilities` | Duplex printing + ADF scanning support for the currently-connected devices |
 
 ### Documentation Endpoints
 
@@ -1074,3 +1190,5 @@ scaning-nodejs/
 |--------|----------|-------------|
 | `GET` | `/` | Documentation UI |
 | `GET` | `/documentation` | Documentation UI (alias) |
+| `GET` | `/api-docs` | Swagger UI (interactive OpenAPI docs, if `SWAGGER_ENABLED`) |
+| `GET` | `/api-docs-json` | Raw OpenAPI 3.0 JSON spec |

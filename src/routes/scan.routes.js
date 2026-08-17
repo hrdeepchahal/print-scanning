@@ -7,8 +7,19 @@ const { SCANS_DIR } = require("../utils/fileHandler");
 const router = express.Router();
 
 /**
- * GET /api/health
- * Lightweight health check — confirms the service is running.
+ * @openapi
+ * /api/health:
+ *   get:
+ *     tags: [Health]
+ *     summary: Service liveness check
+ *     description: Lightweight health check — confirms the service is running.
+ *     responses:
+ *       200:
+ *         description: Service is running
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/HealthResponse'
  */
 router.get("/health", (req, res) => {
   res.json({
@@ -23,19 +34,52 @@ router.get("/health", (req, res) => {
 });
 
 /**
- * GET /api/scan
- *
- * Query parameters:
- *   uniqueId    {string}  optional — identifier printed on the sheet (roll number, center ID, etc.)
- *                         When omitted, the PDF is named <examCode>_<timestamp>.pdf
- *   examCode    {string}  required — exam code (used in filename and folder)
- *   resolution  {number}  optional — scan DPI, defaults to 300
- *
- * Response (200):
- *   { success: true, filename, filePath, platform }
- *
- * Response (4xx / 5xx):
- *   { success: false, message }
+ * @openapi
+ * /api/scan:
+ *   get:
+ *     tags: [Scanning]
+ *     summary: Scan a single page (flatbed)
+ *     description: Scans one page from the flatbed and saves it as a PDF. For multi-page documents, use the Scan Sessions or Auto Scan (ADF) endpoints instead.
+ *     parameters:
+ *       - in: query
+ *         name: examCode
+ *         required: true
+ *         schema: { type: string }
+ *         description: Exam code — used in the output filename and folder.
+ *       - in: query
+ *         name: uniqueId
+ *         schema: { type: string }
+ *         description: Identifier printed on the sheet (roll number, center ID, etc). When omitted, the PDF is named <examCode>_<timestamp>.pdf.
+ *       - in: query
+ *         name: resolution
+ *         schema: { type: integer, minimum: 72, maximum: 1200, default: 300 }
+ *         description: Scan DPI.
+ *     responses:
+ *       200:
+ *         description: Page scanned and saved
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ScanResult' }
+ *       400:
+ *         description: Missing examCode, or resolution out of range
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       422:
+ *         description: Client-fixable scanner error (device not found/not installed/not connected)
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       500:
+ *         description: Scanner/hardware error
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       503:
+ *         description: Scanner is busy with another scan session
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  */
 router.get("/scan", async (req, res) => {
   const { uniqueId, examCode, resolution } = req.query;

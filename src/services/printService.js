@@ -6,6 +6,7 @@ const exec = util.promisify(require("child_process").exec);
 const { v4: uuidv4 } = require("uuid");
 const puppeteer = require("puppeteer");
 const logger = require("../utils/logger");
+const { getPrinterCapabilities } = require("./capabilityService");
 
 const TEMP_DIR = path.join(os.tmpdir(), "print-scanning");
 
@@ -152,21 +153,37 @@ async function convertHtmlToPdf(html, printType = "exam") {
  * Windows: pdf-to-printer package
  * @param {string} pdfPath - Absolute path to the PDF file
  * @param {string|null} printerName - Target printer (null = system default)
+ * @param {boolean} duplex - Print double-sided (long-edge flip) if true
+ * @returns {Promise<{ appliedDuplex: boolean }>} What was actually applied —
+ *   may be `false` even when `duplex` was requested, if the printer's CUPS
+ *   driver doesn't expose a duplex option (checked via capabilityService).
  */
-async function printPdf(pdfPath, printerName) {
+async function printPdf(pdfPath, printerName, duplex = false) {
   const platform = os.platform();
+
+  let appliedDuplex = duplex;
+  if (duplex && platform !== "win32") {
+    const { duplexSupported } = await getPrinterCapabilities(printerName);
+    if (duplexSupported === false) {
+      logger.warn(`Duplex requested but not supported by "${printerName || "(default)"}" — printing single-sided instead`);
+      appliedDuplex = false;
+    }
+  }
 
   if (platform === "win32") {
     const pdfToPrinter = require("pdf-to-printer");
-    const opts = printerName ? { printer: printerName } : {};
+    const opts = { ...(printerName ? { printer: printerName } : {}), side: duplex ? "duplexlong" : "simplex" };
     await pdfToPrinter.print(pdfPath, opts);
-    logger.info(`Print job sent (Windows) to ${printerName || "default printer"}`);
+    logger.info(`Print job sent (Windows) to ${printerName || "default printer"} (duplex: ${duplex})`);
   } else {
-    const args = printerName ? ["-d", printerName] : [];
+    const sidesArgs = ["-o", appliedDuplex ? "sides=two-sided-long-edge" : "sides=one-sided"];
+    const args = [...(printerName ? ["-d", printerName] : []), ...sidesArgs];
     const cmd = `lp ${args.join(" ")} "${pdfPath}"`;
     const { stdout } = await exec(cmd);
-    logger.info(`Print job sent (CUPS): ${stdout.trim()}`);
+    logger.info(`Print job sent (CUPS): ${stdout.trim()} (duplex: ${appliedDuplex})`);
   }
+
+  return { appliedDuplex };
 }
 
 /**
@@ -189,11 +206,13 @@ function cleanupTempPdf(pdfPath) {
  * @param {string} html - HTML content to print
  * @param {string} printType - "exam" or "omr"
  * @param {string|null} printerName - Target printer (null = system default)
+ * @param {boolean} duplex - Print double-sided if true (may be downgraded — see printPdf)
+ * @returns {Promise<{ appliedDuplex: boolean }>}
  */
-async function printFromHtml(html, printType, printerName) {
+async function printFromHtml(html, printType, printerName, duplex = false) {
   const pdfPath = await convertHtmlToPdf(html, printType);
   try {
-    await printPdf(pdfPath, printerName);
+    return await printPdf(pdfPath, printerName, duplex);
   } finally {
     cleanupTempPdf(pdfPath);
   }

@@ -572,6 +572,7 @@
         <a href="/api/health" target="_blank">Health</a>
         <a href="/api/printers" target="_blank">Printers</a>
         <a href="/api/docs" target="_blank">Docs API</a>
+        <a href="/api-docs" target="_blank">Swagger</a>
       </div>
       <span class="port-badge">:4545</span>
     </header>
@@ -610,6 +611,22 @@
             <div class="label">Default Printer</div>
             <div class="value" id="printer-val">...</div>
           </div>
+        </div>
+
+        <!-- Device Capabilities — duplex printing + ADF bulk scanning, live -->
+        <div class="panel">
+          <div class="panel-header">
+            <span style="font-size:18px">🧩</span>
+            <strong>Device Capabilities</strong>
+            <span class="panel-badge panel-badge-print">Live</span>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+            Whether the currently-connected printer/scanner actually support double-sided printing and automatic (ADF) multi-page scanning — the same check that runs at service startup and gates <code>POST /api/scan/auto/start</code>.
+          </p>
+          <div id="caps-area" style="display:flex;gap:12px;flex-wrap:wrap">
+            <p style="font-size:13px;color:var(--muted)">Checking capabilities…</p>
+          </div>
+          <button id="reload-caps-btn" class="btn btn-default" style="margin-top:12px">↺ Recheck</button>
         </div>
 
         <!-- ── Tab navigation: Scanning | Printing ── -->
@@ -762,6 +779,11 @@
                 <option value="exam">Exam (0.25in margins)</option>
                 <option value="omr">OMR (zero margins)</option>
               </select>
+              <select id="print-duplex-select" class="select" style="min-width:150px" title="Falls back to PRINT_DUPLEX_DEFAULT if left as-is">
+                <option value="">Duplex: env default</option>
+                <option value="true">Duplex: double-sided</option>
+                <option value="false">Duplex: single-sided</option>
+              </select>
               <button id="send-test-print-btn" class="btn btn-primary">🖨️ Send Test Print</button>
             </div>
             <div id="print-result" class="result-box" style="display:none"></div>
@@ -877,12 +899,59 @@
       loadPrinters()
       document.getElementById("reload-printers-btn").addEventListener("click", loadPrinters)
 
+      // ── Device Capabilities (duplex printing + ADF scanning) ─
+      function capCard(label, icon, state, detail) {
+        const cfg = {
+          yes: { dot: "dot-green", color: "var(--green)", text: "Supported" },
+          no: { dot: "dot-red", color: "var(--red)", text: "Not Supported" },
+          unknown: { dot: "", color: "var(--muted)", text: "Unknown" },
+        }[state]
+        return `<div style="
+            background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+            padding:12px 16px;min-width:220px;flex:1">
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px">${icon} ${label}</div>
+          <div style="font-size:13px;color:${cfg.color};display:flex;align-items:center;margin-bottom:4px">
+            ${cfg.dot ? `<span class="dot ${cfg.dot}" style="animation:none"></span>` : ""}${cfg.text}
+          </div>
+          <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono);word-break:break-all">${detail}</div>
+        </div>`
+      }
+
+      function loadCapabilities() {
+        const area = document.getElementById("caps-area")
+        area.innerHTML = '<p style="font-size:13px;color:var(--muted)">Checking capabilities…</p>'
+
+        fetch("/api/capabilities")
+          .then(r => r.json())
+          .then(d => {
+            if (!d.success) throw new Error(d.message || "Capability check failed")
+
+            const p = d.printer
+            const printState = p.duplexSupported === null ? "unknown" : (p.duplexSupported ? "yes" : "no")
+            const printDetail = p.name ? `Printer: ${p.name}` : "No printer configured"
+
+            const s = d.scanner
+            const scanState = s.adfSupported === null ? "unknown" : (s.adfSupported ? "yes" : "no")
+            const scanDetail = s.device ? `Device: ${s.device}` : "No scanner detected"
+
+            area.innerHTML =
+              capCard("Duplex Printing", "🖨️", printState, printDetail) +
+              capCard("ADF Bulk Scanning", "📠", scanState, scanDetail)
+          })
+          .catch(err => {
+            area.innerHTML = `<p style="font-size:13px;color:var(--red)">Failed to check capabilities: ${err.message}</p>`
+          })
+      }
+      loadCapabilities()
+      document.getElementById("reload-caps-btn").addEventListener("click", loadCapabilities)
+
       // ── Test Print ──────────────────────────────────────────
       document.getElementById("send-test-print-btn").addEventListener("click", async () => {
         const btn = document.getElementById("send-test-print-btn")
         const result = document.getElementById("print-result")
         const printer = document.getElementById("print-printer-select").value
         const printType = document.getElementById("print-type-select").value
+        const duplexChoice = document.getElementById("print-duplex-select").value
 
         btn.disabled = true
         btn.textContent = "⏳ Printing..."
@@ -890,6 +959,9 @@
         result.textContent = "Sending test page to printer..."
         result.style.color = "var(--muted)"
 
+        const wantsDuplex = duplexChoice === "true"
+        // Duplex only means anything with 2+ pages — a page-break forces a
+        // second sheet-side so a real duplex test shows content on the back.
         const testHtml = `<!DOCTYPE html><html><head><style>
           body{font-family:Arial,sans-serif;padding:40px;color:#222}
           h1{color:#2563eb;border-bottom:2px solid #2563eb;padding-bottom:8px}
@@ -898,12 +970,14 @@
           th,td{padding:8px 12px;border:1px solid #e2e8f0;text-align:left;font-size:13px}
           th{background:#f8fafc;font-weight:600}
           .footer{margin-top:30px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8}
+          .page-2{page-break-before:always}
         </style></head><body>
           <h1>Print Scanning — Print Test Page</h1>
           <div class="info">
             <strong>Service:</strong> scanning-nodejs (port 4545)<br>
             <strong>Print Type:</strong> ${printType}<br>
             <strong>Printer:</strong> ${printer || "System Default"}<br>
+            <strong>Duplex:</strong> ${duplexChoice === "" ? "env default" : (wantsDuplex ? "double-sided" : "single-sided")}<br>
             <strong>Timestamp:</strong> ${new Date().toLocaleString()}
           </div>
           <p>If you can read this page, your printer is correctly configured and working with the Print Scanning local service.</p>
@@ -915,10 +989,16 @@
             <tr><td>Paper Output</td><td>OK (you are reading this)</td></tr>
           </table>
           <div class="footer">Print Scanning Local Service — Test Page — ${new Date().toISOString()}</div>
+          ${wantsDuplex ? `
+          <div class="page-2">
+            <h1>PAGE 2 — Back Side</h1>
+            <p>If duplex printing is working, this page came out on the <strong>reverse side</strong> of page 1, not on a separate sheet.</p>
+          </div>` : ""}
         </body></html>`
 
         try {
           const body = { html: testHtml, printType }
+          if (duplexChoice !== "") body.duplex = wantsDuplex
           if (printer) body.printerName = printer
 
           const res = await fetch("/api/print", {
@@ -929,8 +1009,10 @@
           const data = await res.json()
 
           if (data.success) {
-            result.style.color = "var(--green)"
-            result.textContent = `Print job queued successfully!\nJob ID: ${data.jobId}\nPrinter: ${printer || "System Default"}\nType: ${printType}`
+            result.style.color = data.warning ? "var(--yellow)" : "var(--green)"
+            result.textContent =
+              `Print job queued successfully!\nJob ID: ${data.jobId}\nPrinter: ${printer || "System Default"}\nType: ${printType}` +
+              (data.warning ? `\n\n⚠ ${data.warning}` : "")
           } else {
             result.style.color = "var(--red)"
             result.textContent = `Print failed: ${data.message}`

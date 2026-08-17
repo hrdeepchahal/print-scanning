@@ -26,6 +26,8 @@
     "pdf-to-printer": "^5.7.0",
     "puppeteer": "^24.40.0",
     "sharp": "^0.33.5",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0",
     "winston": "^3.13.0"
   },

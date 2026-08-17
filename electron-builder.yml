@@ -1,0 +1,136 @@
+# electron-builder.yml
+# Production build config for Print & Scan Service
+# Generates: Windows .exe (NSIS), Linux .deb + .AppImage, macOS .dmg
+
+appId: com.antiersolutions.printscansvc
+productName: "Print & Scan Service"
+copyright: "Copyright © 2026 Antier Solutions"
+
+# ─── Entry points ─────────────────────────────────────────────────────────────
+main: electron/main.js
+
+# ─── Output directory ─────────────────────────────────────────────────────────
+directories:
+  output: dist/
+  buildResources: build/  # icons go here: icon.icns, icon.ico, icon.png
+
+# ─── Files to include in the packaged app ─────────────────────────────────────
+files:
+  - "electron/**/*"
+  - "shared/**/*"
+  - "src/**/*"
+  - "package.json"
+  - ".env"
+  - "!node_modules/puppeteer/.local-chromium/**"   # exclude dev chromium cache
+  - "!**/*.map"
+  - "!**/*.ts"
+  - "!**/__tests__/**"
+
+# ─── Extra resources bundled alongside the app ────────────────────────────────
+# These are copied into process.resourcesPath at build time.
+# DependencyManager.js reads them from there at runtime.
+extraResources:
+  # ── Windows: NAPS2 portable ──────────────────────────────────────────────
+  # Download NAPS2 portable ZIP from https://www.naps2.com/download
+  # Extract into resources/naps2/ before building.
+  # Structure: resources/naps2/naps2.console.exe + DLLs
+  - from: "resources/naps2/"
+    to:   "naps2/"
+    filter:
+      - "**/*"
+    # Only include on Windows builds — saves 30 MB on Linux/macOS installers
+    platform: win32
+
+  # ── macOS: bundled scanimage binary (fallback if Homebrew not present) ───
+  # Build with: brew install sane-backends, then copy:
+  #   cp /opt/homebrew/bin/scanimage resources/bin/scanimage
+  # Also copy required dylibs if needed.
+  - from: "resources/bin/"
+    to:   "bin/"
+    filter:
+      - "scanimage"
+      - "*.dylib"
+    platform: darwin
+
+# ─── Windows ──────────────────────────────────────────────────────────────────
+win:
+  target:
+    - target: nsis        # produces single-file .exe installer
+      arch: [x64]
+  icon: build/icon.ico
+  # Request admin on install (needed to write to Program Files)
+  # The Electron app itself does NOT need admin at runtime — NAPS2 bundled portable.
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: true            # silent install — teacher just double-clicks .exe
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "Print & Scan Service"
+  # Auto-start tray app after install
+  runAfterFinish: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+
+# ─── Linux ────────────────────────────────────────────────────────────────────
+linux:
+  target:
+    - target: deb        # preferred — handles deps automatically
+    - target: AppImage   # fallback for non-Debian distros
+  icon: build/icons/     # folder with 16x16 through 512x512 PNGs
+  category: Utility
+  maintainer: "Antier Solutions <support@antiersolutions.com>"
+  synopsis: "Silent print and scan service for local network"
+  description: |
+    A local HTTP service (port 4545) that enables websites to silently print
+    to any printer and scan from any scanner without browser print dialogs.
+
+deb:
+  # apt will auto-install these when teacher installs the .deb
+  # Zero terminal access needed — Software Center handles everything
+  depends:
+    - sane-utils       # provides scanimage command
+    - sane-airscan     # WiFi/network scanner support (Canon, HP, Epson, etc.)
+    - cups             # printer spooler (lp command) — usually pre-installed
+    - libnotify4       # system tray notifications
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]   # Intel + Apple Silicon universal
+  icon: build/icon.icns
+  category: public.app-category.utilities
+  # Minimum macOS version
+  minimumSystemVersion: "11.0"
+  # Hardened runtime required for notarization
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  title: "Print & Scan Service"
+  background: build/dmg-background.png
+  icon: build/icon.icns
+  iconSize: 80
+  window:
+    width:  540
+    height: 380
+  contents:
+    - x: 135
+      y: 185
+      type: file
+    - x: 405
+      y: 185
+      type: link
+      path: /Applications
+
+# ─── Auto-update (optional — configure if you have an update server) ──────────
+# publish:
+#   provider: generic
+#   url: https://your-update-server.com/updates/
+
+# ─── Hooks ────────────────────────────────────────────────────────────────────
+# afterPack: electron/scripts/afterPack.js   # optional post-pack hook

@@ -29,6 +29,47 @@ const router = express.Router();
 // Body: { uniqueId?, examCode, pageCount, resolution? }
 // Response: { success, sessionId, totalPages }
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/scan/start:
+ *   post:
+ *     tags: [Scan Sessions]
+ *     summary: Begin a multi-page scan session
+ *     description: Begins a session-based multi-page scan — call this once, then POST /api/scan/page/{sessionId} once per page, then POST /api/scan/complete/{sessionId} to merge. On Linux/macOS this spawns a persistent scanimage --batch process that keeps the device open for the whole session, avoiding an airscan eSCL re-open conflict. Prefer POST /api/scan/auto/start for ADF (feeder) scanners instead — this session-based flow requires a client call between every page.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [examCode, pageCount]
+ *             properties:
+ *               examCode: { type: string }
+ *               uniqueId: { type: string, description: "Roll number or center ID" }
+ *               pageCount: { type: integer, minimum: 1, maximum: 100 }
+ *               resolution: { type: integer, minimum: 72, maximum: 1200, default: 300 }
+ *     responses:
+ *       200:
+ *         description: Session created, scanner ready for page 1
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ScanSessionStartResponse' }
+ *       400:
+ *         description: Missing examCode, or pageCount/resolution out of range
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       500:
+ *         description: Failed to open the scanner
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       503:
+ *         description: Scanner is busy with another scan session
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ */
 router.post("/scan/start", async (req, res) => {
   const { uniqueId, examCode, pageCount, resolution } = req.body;
 
@@ -132,6 +173,50 @@ router.post("/scan/start", async (req, res) => {
 //
 // Response: { success, sessionId, currentPage, totalPages, remaining }
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/scan/page/{sessionId}:
+ *   post:
+ *     tags: [Scan Sessions]
+ *     summary: Scan the next page in a session
+ *     description: Scans the next page. On Linux/macOS, signals the persistent batch process via stdin — the device was already opened at session start, so there is no re-open and no airscan eSCL conflict.
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Page scanned
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ScanPageProgressResponse' }
+ *       404:
+ *         description: Session not found, expired, or already completed
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       409:
+ *         description: Session is not active, or all pages already scanned
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       422:
+ *         description: Client-fixable scanner error (e.g. document not on the flatbed)
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       500:
+ *         description: Scanner/hardware error
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       503:
+ *         description: Scanner is busy (Windows/fallback per-page path only)
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ */
 router.post("/scan/page/:sessionId", async (req, res) => {
   const { sessionId } = req.params;
   const session = getSession(sessionId);
@@ -238,6 +323,45 @@ router.post("/scan/page/:sessionId", async (req, res) => {
 //
 // Merge all scanned PNGs into a single PDF.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/scan/complete/{sessionId}:
+ *   post:
+ *     tags: [Scan Sessions]
+ *     summary: Finalize a session — merge scanned pages into a PDF
+ *     description: Merges all scanned PNGs for the session into a single PDF.
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: PDF created
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ScanCompleteResponse' }
+ *       400:
+ *         description: No pages scanned yet, or not all pages scanned
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       404:
+ *         description: Session not found or already completed
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       409:
+ *         description: Session is not active
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       500:
+ *         description: PDF merge failed
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ */
 router.post("/scan/complete/:sessionId", async (req, res) => {
   const { sessionId } = req.params;
   const session = getSession(sessionId);
@@ -296,6 +420,30 @@ router.post("/scan/complete/:sessionId", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/scan/session/:sessionId
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/scan/session/{sessionId}:
+ *   delete:
+ *     tags: [Scan Sessions]
+ *     summary: Cancel a scan session
+ *     description: Cancels an in-progress session and cleans up any temporary scanned pages.
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Session cancelled
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/CancelSessionResponse' }
+ *       404:
+ *         description: Session not found, already completed, or expired
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ */
 router.delete("/scan/session/:sessionId", (req, res) => {
   const { sessionId } = req.params;
   const session = getSession(sessionId);
