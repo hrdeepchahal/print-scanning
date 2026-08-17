@@ -201,7 +201,8 @@ const CapabilitiesResponse = {
       properties: {
         name: { type: "string", nullable: true, example: "Canon_GX4000_series_USB" },
         duplexSupported: { type: "boolean", nullable: true, description: "null on Windows (unchecked)" },
-        sidesOptions: { type: "array", items: { type: "string" }, example: ["one-sided", "two-sided-long-edge", "two-sided-short-edge"] },
+        sidesOptions: { type: "array", items: { type: "string" }, example: ["one-sided", "two-sided-long-edge", "two-sided-short-edge"], description: "Raw values reported by the driver, under whichever option name it uses (see duplexOptionName)." },
+        duplexOptionName: { type: "string", nullable: true, enum: ["sides", "Duplex", null], description: "Which CUPS option name this printer's driver actually uses. Some PPDs (e.g. this project's own Canon MAXIFY GX4070) only expose the older 'Duplex' keyword (None/DuplexNoTumble/DuplexTumble), not the IPP-standard 'sides'." },
       },
     },
     scanner: {

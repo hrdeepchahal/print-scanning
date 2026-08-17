@@ -35,14 +35,29 @@ function parseScanimageSources(stdout) {
 }
 
 /**
- * Whether the given printer's CUPS driver exposes a duplex ("sides") option.
- * Linux/macOS only — Windows has no equivalent driver-introspection via
- * pdf-to-printer, so it returns `duplexSupported: null` (unknown, not false)
- * so callers can tell "not supported" apart from "couldn't check".
+ * CUPS drivers expose duplex under one of two option names, depending on the
+ * PPD: the modern IPP-standard `sides` (one-sided / two-sided-long-edge /
+ * two-sided-short-edge), or the older PostScript-style `Duplex` keyword
+ * (None / DuplexNoTumble / DuplexTumble) — e.g. this project's own Canon
+ * MAXIFY GX4070 PPD only exposes `Duplex`, confirmed via
+ * `lpoptions -p Canon_GX4000_series -l`. `printPdf()` needs to know which one
+ * a given printer uses so it sends an option the driver actually understands.
+ */
+const DUPLEX_OPTION_MAP = {
+  sides: { on: "sides=two-sided-long-edge", off: "sides=one-sided" },
+  Duplex: { on: "Duplex=DuplexNoTumble", off: "Duplex=None" },
+};
+
+/**
+ * Whether the given printer's CUPS driver exposes a duplex option, under
+ * either naming convention above. Linux/macOS only — Windows has no
+ * equivalent driver-introspection via pdf-to-printer, so it returns
+ * `duplexSupported: null` (unknown, not false) so callers can tell
+ * "not supported" apart from "couldn't check".
  */
 async function getPrinterCapabilities(printerName) {
   if (os.platform() === "win32") {
-    return { duplexSupported: null, sidesOptions: [] };
+    return { duplexSupported: null, sidesOptions: [], duplexOptionName: null };
   }
 
   const cacheKey = printerName || "(default)";
@@ -51,15 +66,34 @@ async function getPrinterCapabilities(printerName) {
   }
 
   let sidesOptions = [];
+  let duplexOptionName = null;
   try {
     const args = printerName ? `-p "${printerName}"` : "-d";
     const { stdout } = await exec(`lpoptions ${args} -l 2>/dev/null`);
-    sidesOptions = parseLpoptionsValues(stdout, "sides");
+
+    const standard = parseLpoptionsValues(stdout, "sides");
+    if (standard.length) {
+      sidesOptions = standard;
+      duplexOptionName = "sides";
+    } else {
+      const legacy = parseLpoptionsValues(stdout, "Duplex");
+      if (legacy.length) {
+        sidesOptions = legacy;
+        duplexOptionName = "Duplex";
+      }
+    }
   } catch (err) {
     logger.warn(`lpoptions capability check failed for "${cacheKey}": ${err.message}`);
   }
 
-  const value = { duplexSupported: sidesOptions.some((o) => o.startsWith("two-sided")), sidesOptions };
+  const duplexSupported =
+    duplexOptionName === "sides"
+      ? sidesOptions.some((o) => o.startsWith("two-sided"))
+      : duplexOptionName === "Duplex"
+        ? sidesOptions.some((o) => o.toLowerCase().startsWith("duplex"))
+        : false;
+
+  const value = { duplexSupported, sidesOptions, duplexOptionName };
   _printerCache = { key: cacheKey, value, expiresAt: Date.now() + CAPABILITY_CACHE_MS };
   return value;
 }
@@ -136,4 +170,5 @@ module.exports = {
   getPrinterCapabilities,
   getScannerCapabilities,
   getAllCapabilities,
+  DUPLEX_OPTION_MAP,
 };

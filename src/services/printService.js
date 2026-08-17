@@ -6,7 +6,7 @@ const exec = util.promisify(require("child_process").exec);
 const { v4: uuidv4 } = require("uuid");
 const puppeteer = require("puppeteer");
 const logger = require("../utils/logger");
-const { getPrinterCapabilities } = require("./capabilityService");
+const { getPrinterCapabilities, DUPLEX_OPTION_MAP } = require("./capabilityService");
 
 const TEMP_DIR = path.join(os.tmpdir(), "print-scanning");
 
@@ -162,9 +162,12 @@ async function printPdf(pdfPath, printerName, duplex = false) {
   const platform = os.platform();
 
   let appliedDuplex = duplex;
-  if (duplex && platform !== "win32") {
-    const { duplexSupported } = await getPrinterCapabilities(printerName);
-    if (duplexSupported === false) {
+  let duplexOptionName = "sides"; // fallback if the driver can't be checked — matches prior behavior
+
+  if (platform !== "win32") {
+    const caps = await getPrinterCapabilities(printerName);
+    if (caps.duplexOptionName) duplexOptionName = caps.duplexOptionName;
+    if (duplex && caps.duplexSupported === false) {
       logger.warn(`Duplex requested but not supported by "${printerName || "(default)"}" — printing single-sided instead`);
       appliedDuplex = false;
     }
@@ -176,11 +179,16 @@ async function printPdf(pdfPath, printerName, duplex = false) {
     await pdfToPrinter.print(pdfPath, opts);
     logger.info(`Print job sent (Windows) to ${printerName || "default printer"} (duplex: ${duplex})`);
   } else {
-    const sidesArgs = ["-o", appliedDuplex ? "sides=two-sided-long-edge" : "sides=one-sided"];
+    // Which CUPS option the driver actually understands varies by PPD — e.g.
+    // this project's own Canon MAXIFY GX4070 only exposes the older `Duplex`
+    // keyword (None/DuplexNoTumble/DuplexTumble), not the IPP-standard `sides`
+    // (one-sided/two-sided-long-edge/...). See DUPLEX_OPTION_MAP.
+    const duplexArg = DUPLEX_OPTION_MAP[duplexOptionName] || DUPLEX_OPTION_MAP.sides;
+    const sidesArgs = ["-o", appliedDuplex ? duplexArg.on : duplexArg.off];
     const args = [...(printerName ? ["-d", printerName] : []), ...sidesArgs];
     const cmd = `lp ${args.join(" ")} "${pdfPath}"`;
     const { stdout } = await exec(cmd);
-    logger.info(`Print job sent (CUPS): ${stdout.trim()} (duplex: ${appliedDuplex})`);
+    logger.info(`Print job sent (CUPS): ${stdout.trim()} (duplex: ${appliedDuplex}, option: ${duplexOptionName})`);
   }
 
   return { appliedDuplex };
